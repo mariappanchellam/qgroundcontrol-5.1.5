@@ -112,6 +112,8 @@ android {
     }
 
     defaultConfig {
+        // Own application id so it installs alongside the official QGroundControl
+        applicationId "com.dhaksha.groundcontrol5"
         resConfig "en"
         minSdkVersion qtMinSdkVersion
         targetSdkVersion qtTargetSdkVersion

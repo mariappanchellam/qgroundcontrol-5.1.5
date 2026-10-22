@@ -90,7 +90,7 @@ jobs:
 
     env:
       BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
-      PACKAGE: QGroundControl
+      PACKAGE: DhakshaGroundControl
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
       QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -250,7 +250,7 @@ jobs:
         uses: ./.github/actions/android-emulator-test
         with:
           apk-path: ${{ runner.temp }}/build/${{ env.PACKAGE }}.apk
-          package: org.mavlink.qgroundcontrol
+          package: com.dhaksha.groundcontrol5
           android-platform: ${{ steps.setup.outputs.android_platform }}
           qt-version: ${{ steps.setup.outputs.qt_version }}
           ndk-version: ${{ steps.setup.outputs.android_ndk_full_version }}

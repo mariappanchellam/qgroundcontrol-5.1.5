@@ -93,8 +93,9 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
 )
-if(NOT QGC_APP_VERSION_STR)
-    set(QGC_APP_VERSION_STR "v0.0.0")
+# This repo carries no upstream release tags; report the QGC release it is based on
+if(NOT QGC_APP_VERSION_STR MATCHES "^v[0-9]+\\.[0-9]+\\.[0-9]+")
+    set(QGC_APP_VERSION_STR "v5.1.5")
 endif()
 # cmake_print_variables(QGC_APP_VERSION_STR)
 
@@ -116,8 +117,8 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
 )
-if(NOT QGC_APP_VERSION)
-    set(QGC_APP_VERSION "v0.0.0")
+if(NOT QGC_APP_VERSION MATCHES "^v[0-9]+\\.[0-9]+\\.[0-9]+")
+    set(QGC_APP_VERSION "v5.1.5")
 endif()
 # cmake_print_variables(QGC_APP_VERSION)
 
