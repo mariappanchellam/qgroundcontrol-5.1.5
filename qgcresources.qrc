@@ -15,6 +15,9 @@
         <file alias="QGCLogoArrow.svg">resources/QGCLogoArrow.svg</file>
         <file alias="rtl.svg">resources/rtl.svg</file>
         <file alias="SplashScreen">resources/SplashScreen.png</file>
+        <file alias="DhakshaSplashLogo.svg">resources/DhakshaSplashLogo.svg</file>
+        <file alias="DhakshaDroneBody.svg">resources/DhakshaDroneBody.svg</file>
+        <file alias="DhakshaDronePropeller.svg">resources/DhakshaDronePropeller.svg</file>
         <file alias="takeoff.svg">resources/takeoff.svg</file>
         <file alias="TrashCan.svg">resources/TrashCan.svg</file>
         <file alias="TrashDelete.svg">resources/TrashDelete.svg</file>

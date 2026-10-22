@@ -11,6 +11,10 @@ set_source_files_properties(MainWindow/MainWindow.qml
     PROPERTIES
         QT_RESOURCE_ALIAS MainWindow.qml
 )
+set_source_files_properties(MainWindow/DhakshaBootSplash.qml
+    PROPERTIES
+        QT_RESOURCE_ALIAS DhakshaBootSplash.qml
+)
 
 qt_add_qml_module(QGroundControlModule
     URI QGroundControl
@@ -19,6 +23,7 @@ qt_add_qml_module(QGroundControlModule
     QML_FILES
         MainWindow/MainWindow.qml
         MainWindow/MainWindowSavedState.qml
+        MainWindow/DhakshaBootSplash.qml
     IMPORTS
         QGC
     NO_PLUGIN

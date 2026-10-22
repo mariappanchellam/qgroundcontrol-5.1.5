@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Shown while the app loads: the Dhaksha Drones logo on the brand colour (the animated boot screen continues from it) -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#000000"/>
+            <solid android:color="#DEE21B"/>
         </shape>
     </item>
     <item>
-        <bitmap android:src="@drawable/icon" android:gravity="center"/>
+        <bitmap android:src="@drawable/splash_logo" android:gravity="center"/>
     </item>
 </layer-list>

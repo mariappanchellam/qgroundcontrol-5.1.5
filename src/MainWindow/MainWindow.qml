@@ -28,9 +28,32 @@ ApplicationWindow {
     leftPadding:   0
     rightPadding:  0
 
-    Component.onCompleted: {
-        // Start the sequence of first run prompt(s)
-        firstRunPromptManager.nextPrompt()
+    // The first run prompt(s) start once the Dhaksha boot animation has finished (bootSplashLoader.done())
+
+    // Dhaksha boot animation: continues the Android launch image (logo on the brand colour) with a drone
+    // flying around the logo and a loading bar, shown above everything; tap to skip
+    Loader {
+        id:             bootSplashLoader
+        parent:         Overlay.overlay
+        anchors.fill:   parent
+        z:              1000000
+        sourceComponent: Component {
+            DhakshaBootSplash {
+                onFinished: bootSplashLoader.done()
+            }
+        }
+
+        function done() {
+            active = false
+            // Start the sequence of first run prompt(s)
+            firstRunPromptManager.nextPrompt()
+        }
+
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                done()
+            }
+        }
     }
 
     /// Saves main window position and size and re-opens it in the same position and size next time
