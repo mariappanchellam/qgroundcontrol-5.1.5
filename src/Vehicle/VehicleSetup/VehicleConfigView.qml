@@ -215,8 +215,17 @@ Rectangle {
         }
     }
 
+    // Dhaksha: the Parameters page opens only after the password ("123") is entered
     function showParametersPanel() {
-        showPanel("parameters", "qrc:/qml/QGroundControl/VehicleSetup/SetupParameterEditor.qml")
+        if (_selectedSpecial === "parameters" || !mainWindow.allowViewSwitch()) {
+            return
+        }
+        parameterPasswordDialog.open()
+    }
+
+    ParameterPasswordDialog {
+        id:                 parameterPasswordDialog
+        onPasswordAccepted: showPanel("parameters", "qrc:/qml/QGroundControl/VehicleSetup/SetupParameterEditor.qml")
     }
 
     function showVehicleComponentPanel(vehicleComponent) {
@@ -557,7 +566,7 @@ Rectangle {
                     Layout.fillWidth:   true
                     icon.source:        "/qmlimages/subMenuButtonImage.png"
                     checked:            vehicleConfigView._selectedSpecial === "parameters"
-                    onClicked:          showPanel("parameters", "qrc:/qml/QGroundControl/VehicleSetup/SetupParameterEditor.qml")
+                    onClicked:          showParametersPanel()
                 }
 
                 ConfigButton {
