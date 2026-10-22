@@ -1,0 +1,209 @@
+#include "LinkInterface.h"
+#include "MAVLinkLib.h"
+#include "LinkManager.h"
+#include "AppMessages.h"
+#include "QGCApplication.h"
+#include "QGCLoggingCategory.h"
+#include "SigningController.h"
+
+#include <QtCore/QThread>
+#include <QtQml/QQmlEngine>
+
+QGC_LOGGING_CATEGORY(LinkInterfaceLog, "Comms.LinkInterface")
+
+namespace {
+    constexpr int WORKER_SHUTDOWN_TIMEOUT_MS = 3000;
+}
+
+LinkInterface::LinkInterface(SharedLinkConfigurationPtr &config, QObject *parent)
+    : QObject(parent)
+    , _config(config)
+{
+    QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
+}
+
+LinkInterface::~LinkInterface()
+{
+    if (_vehicleReferenceCount != 0) {
+        qCWarning(LinkInterfaceLog) << "still have vehicle references:" << _vehicleReferenceCount;
+    }
+
+    _config.reset();
+}
+
+void LinkInterface::_shutdownWorkerThread(QThread *thread, const QLoggingCategory &category, bool allowTerminate)
+{
+    if (!thread) {
+        return;
+    }
+
+    // Self-shutdown: wait() would fail and terminate() would kill the calling thread mid-destructor
+    if (thread->isCurrentThread()) {
+        qCCritical(category) << "Shutdown called from worker thread itself, orphaning";
+        thread->quit();
+        _orphanWorkerThread(thread);
+        return;
+    }
+
+    thread->quit();
+    if (thread->wait(WORKER_SHUTDOWN_TIMEOUT_MS)) {
+        return;
+    }
+
+    if (allowTerminate) {
+        qCWarning(category) << "Worker thread did not stop within timeout, terminating";
+        thread->terminate();
+        if (thread->wait(WORKER_SHUTDOWN_TIMEOUT_MS)) {
+            return;
+        }
+    }
+
+    // Orphan the running thread — leaking it beats the ~QThread abort in deleteChildren()
+    qCCritical(category) << "Worker thread could not be stopped, leaking it to avoid abort";
+    _orphanWorkerThread(thread);
+}
+
+void LinkInterface::_orphanWorkerThread(QThread *thread)
+{
+    thread->setParent(nullptr);
+
+    // Workers hold raw pointers into the configuration: keep it alive until the thread
+    // finishes so a stalled worker that resumes can't dereference a destroyed config.
+    (void) QObject::connect(thread, &QThread::finished, thread, [config = _config]() { Q_UNUSED(config); });
+
+    // Self-heal if the thread eventually exits: deleting the thread destroys the
+    // connection above, releasing the config. At app exit there is no main loop to
+    // deliver this, so both leak — the intended last-resort behavior.
+    (void) QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+}
+
+uint8_t LinkInterface::mavlinkChannel() const
+{
+    if (!mavlinkChannelIsSet()) {
+        qCWarning(LinkInterfaceLog) << "mavlinkChannelIsSet() == false";
+    }
+
+    return _mavlinkChannel;
+}
+
+bool LinkInterface::mavlinkChannelIsSet() const
+{
+    return (LinkManager::invalidMavlinkChannel() != _mavlinkChannel);
+}
+
+bool LinkInterface::_allocateMavlinkChannel()
+{
+    Q_ASSERT(!mavlinkChannelIsSet());
+
+    if (mavlinkChannelIsSet()) {
+        qCWarning(LinkInterfaceLog) << "already have" << _mavlinkChannel;
+        return true;
+    }
+
+    _mavlinkChannel = LinkManager::instance()->allocateMavlinkChannel();
+
+    if (!mavlinkChannelIsSet()) {
+        qCWarning(LinkInterfaceLog) << "failed";
+        return false;
+    }
+
+    qCDebug(LinkInterfaceLog) << "_allocateMavlinkChannel" << _mavlinkChannel;
+
+    mavlink_set_proto_version(_mavlinkChannel, MAVLINK_VERSION); // We only support v2 protcol
+
+    _signingController = std::make_unique<SigningController>(static_cast<mavlink_channel_t>(_mavlinkChannel));
+    _signingController->clearSigning();
+
+    qCDebug(LinkInterfaceLog) << "SigningController created for channel" << _mavlinkChannel
+                              << (isSecureConnection() ? "(secure)" : "(will auto-detect)");
+
+    return true;
+}
+
+void LinkInterface::_freeMavlinkChannel()
+{
+    qCDebug(LinkInterfaceLog) << _mavlinkChannel;
+
+    if (!mavlinkChannelIsSet()) {
+        return;
+    }
+
+    // Destroy the controller before freeing the channel so it can flush the final timestamp.
+    _signingController.reset();
+
+    // mavlink_reset_channel_status only resets parse_state — null signing/streams explicitly to avoid dangling derefs.
+    mavlink_status_t* const status = mavlink_get_channel_status(_mavlinkChannel);
+    status->signing = nullptr;
+    status->signing_streams = nullptr;
+    mavlink_reset_channel_status(_mavlinkChannel);
+
+    LinkManager::instance()->freeMavlinkChannel(_mavlinkChannel);
+    _mavlinkChannel = LinkManager::invalidMavlinkChannel();
+}
+
+void LinkInterface::writeBytesThreadSafe(const char *bytes, int length)
+{
+    const QByteArray data(bytes, length);
+    (void) QMetaObject::invokeMethod(this, "_writeBytes", Qt::AutoConnection, data);
+}
+
+void LinkInterface::sendMessageThreadSafe(mavlink_message_t &message)
+{
+    // Re-sign with a current timestamp; the cached-resend path (Vehicle::sendMessageMultiple) otherwise ships frozen
+    // signed bytes whose timestamp drifts behind wall clock and gets OLD_TIMESTAMP-rejected. No-op when signing is
+    // disabled or the message isn't outgoing-signed. The secret key stays in the signing layer.
+    if (_signingController) {
+        (void) _signingController->signOutgoing(message);
+    }
+
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    const int len = mavlink_msg_to_send_buffer(buffer, &message);
+    writeBytesThreadSafe(reinterpret_cast<const char *>(buffer), len);
+}
+
+void LinkInterface::removeVehicleReference()
+{
+    if (_vehicleReferenceCount != 0) {
+        _vehicleReferenceCount--;
+        _connectionRemoved();
+    } else {
+        qCWarning(LinkInterfaceLog) << "called with no vehicle references";
+    }
+}
+
+void LinkInterface::_connectionRemoved()
+{
+    if (_vehicleReferenceCount == 0) {
+        // Since there are no vehicles on the link we can disconnect it right now
+        disconnect();
+    } else {
+        // If there are still vehicles on this link we allow communication lost to trigger and don't automatically disconect until all the vehicles go away
+    }
+}
+
+void LinkInterface::reportMavlinkV1Traffic()
+{
+    if (_mavlinkV1TrafficReported || _mavlinkV2TrafficSeen) {
+        return;
+    }
+
+    // Defer the warning: ArduPilot starts out sending v1 and upgrades to v2 once it sees v2
+    // traffic from QGC. Only warn if the link never produces v2 within the grace period.
+    if (!_mavlinkV1FirstSeenTimer.isValid()) {
+        _mavlinkV1FirstSeenTimer.start();
+    }
+    if (_mavlinkV1FirstSeenTimer.elapsed() < _mavlinkV1TrafficGraceMsecs) {
+        return;
+    }
+
+    _mavlinkV1TrafficReported = true;
+
+    const SharedLinkConfigurationPtr linkConfig = linkConfiguration();
+    const QString linkName = linkConfig ? linkConfig->name() : QStringLiteral("unknown");
+    qCWarning(LinkInterfaceLog) << "MAVLink v1 traffic detected on link" << linkName;
+    const QString message = tr("MAVLink v1 traffic detected on link '%1'. "
+                               "%2 only supports MAVLink v2. "
+                               "Please ensure your vehicle is configured to use MAVLink v2.")
+                                .arg(linkName).arg(qgcApp()->applicationName());
+    QGC::showAppMessage(message);
+}

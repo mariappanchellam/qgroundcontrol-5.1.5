@@ -1,0 +1,8 @@
+# Replace the default commit message so it has no [ci skip]; Crowdin PRs must run CI (JsonResourceAuditTest)
+commit_message: "New translations %original_file_name% (%language%)"
+append_commit_message: false
+files:
+  - source: /translations/qgc.ts
+    translation: /translations/qgc_source_%locale_with_underscore%.ts
+  - source: /translations/qgc-json.ts
+    translation: /translations/qgc_json_%locale_with_underscore%.ts
