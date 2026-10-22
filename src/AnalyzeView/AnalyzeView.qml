@@ -8,6 +8,12 @@ Rectangle {
     id:     _root
     color:  qgcPal.window
     z:      QGroundControl.zOrderTopMost
+    // Dhaksha skin: navy gradient background
+    gradient: Gradient {
+        GradientStop { position: 0.0; color: "#123578" }
+        GradientStop { position: 0.55; color: "#0a1d4a" }
+        GradientStop { position: 1.0; color: "#050f2a" }
+    }
 
     readonly property real  _defaultTextHeight:     ScreenTools.defaultFontPixelHeight
     readonly property real  _defaultTextWidth:      ScreenTools.defaultFontPixelWidth

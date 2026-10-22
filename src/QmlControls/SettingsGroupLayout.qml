@@ -46,6 +46,7 @@ ColumnLayout {
             text:           heading
             font.pointSize: headingPointSize
             font.bold:      true
+            color:          QGroundControl.globalPalette.buttonBorder   // Dhaksha skin: yellow section headings
         }
 
         QGCLabel {
