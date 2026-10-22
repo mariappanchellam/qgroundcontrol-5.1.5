@@ -261,7 +261,7 @@ jobs:
         uses: ./.github/actions/attest-and-upload
         with:
           artifact-name: ${{ env.PACKAGE }}.apk
-          package-name: ${{ format('{0}-{1}', env.PACKAGE, matrix.host) }}
+          package-name: ${{ matrix.host == 'linux' && 'DhakshaGroundControl-Android-64bit' || format('DhakshaGroundControl-Android-64bit-{0}', matrix.host) }}
           subject-name: ${{ env.PACKAGE }}-${{ matrix.host }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}

@@ -375,5 +375,6 @@ QString QGroundControlQmlGlobal::telemetryFileExtension() const
 
 QString QGroundControlQmlGlobal::appName()
 {
-    return QCoreApplication::applicationName();
+    // Display name only; QCoreApplication::applicationName() still keys settings and save paths
+    return QStringLiteral("DhakshaGroundControl");
 }
