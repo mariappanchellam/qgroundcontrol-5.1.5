@@ -57,7 +57,15 @@ jobs:
             gh release create "$TAG" -R "$REPO" --target "$SHA" --title "DhakshaGroundControl 5.1.5 (latest)" \
               --latest=false --notes "Created by the Publish Dhaksha release workflow."
           fi
-          gh release upload "$TAG" -R "$REPO" --clobber "$ASSET"
+          # The APK goes up under a temporary name and then replaces the old one, so a download started during
+          # the upload still gets the previous build instead of "Page not found"
+          rid=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id)
+          asset_id() { NAME="$1" gh api "repos/$REPO/releases/$rid/assets" --paginate --jq '.[] | select(.name == env.NAME) | .id'; }
+          cp "$ASSET" "$ASSET.uploading"
+          old=$(asset_id "$ASSET.uploading"); [ -z "$old" ] || gh api -X DELETE "repos/$REPO/releases/assets/$old"
+          gh release upload "$TAG" -R "$REPO" "$ASSET.uploading"
+          old=$(asset_id "$ASSET"); [ -z "$old" ] || gh api -X DELETE "repos/$REPO/releases/assets/$old"
+          gh api -X PATCH "repos/$REPO/releases/assets/$(asset_id "$ASSET.uploading")" -f name="$ASSET" > /dev/null
           # The tag follows the newest published build
           gh api -X PATCH "repos/$REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null || true
           url="https://github.com/$REPO/releases/download/$TAG/$ASSET"
