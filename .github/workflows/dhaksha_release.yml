@@ -1,0 +1,73 @@
+# Publishes each finished Android build of master as the GitHub Release "dhaksha-groundcontrol-5-latest", so
+# anyone can download the APK without a GitHub account (workflow artifacts need a login and expire). The file
+# name stays the same, so the link never changes:
+#   https://github.com/<repo>/releases/download/dhaksha-groundcontrol-5-latest/DhakshaGroundControl-5.1.5-64bit.apk
+#
+# Runs after the Android workflow succeeds on master. To publish an older build again:
+# Actions > Publish Dhaksha release > Run workflow, with the build's run id (the number in its run URL).
+name: Publish Dhaksha release
+
+on:
+  workflow_run:
+    workflows: [Android]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Run id of the Android build to publish
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  TAG: dhaksha-groundcontrol-5-latest
+  ARTIFACT: DhakshaGroundControl-Android-64bit
+  ASSET: DhakshaGroundControl-5.1.5-64bit.apk
+
+jobs:
+  publish:
+    name: Publish release
+    # The APK job uploads its artifact before the slower legs of the matrix finish, so a run cancelled after
+    # that still has the APK to publish
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'master' && github.event.workflow_run.event != 'pull_request' &&
+       (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+    steps:
+      - name: Publish the APK
+        run: |
+          set -euo pipefail
+          if ! gh run download "$RUN_ID" -R "$REPO" -n "$ARTIFACT" -D dl; then
+            echo "Run $RUN_ID has no $ARTIFACT artifact: nothing to publish"
+            exit 0
+          fi
+          apk=$(find dl -name '*.apk' | head -n 1)
+          [ -n "$apk" ] || { echo "::error::No APK in $ARTIFACT"; exit 1; }
+          cp "$apk" "$ASSET"
+          read -r SHA DATE < <(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '[.head_sha, .created_at[0:10]] | @tsv')
+          if ! gh release view "$TAG" -R "$REPO" > /dev/null 2>&1; then
+            gh release create "$TAG" -R "$REPO" --target "$SHA" --title "DhakshaGroundControl 5.1.5 (latest)" \
+              --latest=false --notes "Created by the Publish Dhaksha release workflow."
+          fi
+          gh release upload "$TAG" -R "$REPO" --clobber "$ASSET"
+          # The tag follows the newest published build
+          gh api -X PATCH "repos/$REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null || true
+          url="https://github.com/$REPO/releases/download/$TAG/$ASSET"
+          {
+            echo "Latest DhakshaGroundControl 5.1.5 for 64-bit Android (arm64-v8a, e.g. UniRC 7 Pro)."
+            echo "No GitHub account is needed to download it."
+            echo
+            echo "Download: [$ASSET]($url)"
+            echo
+            echo "Last updated $DATE from commit ${SHA:0:7} ([run $RUN_ID](https://github.com/$REPO/actions/runs/$RUN_ID))."
+          } > notes.md
+          gh release edit "$TAG" -R "$REPO" --notes-file notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
