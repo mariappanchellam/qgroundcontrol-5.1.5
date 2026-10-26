@@ -12,6 +12,8 @@ qt_add_qml_module(FlyViewModule
     QML_FILES
         CustomGuidedActionsController.qml
         DefaultChecklist.qml
+        DhakshaCameraControls.qml
+        DhakshaPipCamera.qml
         FixedWingChecklist.qml
         FlightDisplayViewDummy.qml
         FlightDisplayViewVideoOutput.qml

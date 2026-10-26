@@ -58,6 +58,10 @@ public:
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void stopVideo();
 
+    /// DhakshaGroundControl: RTSP address of the camera shown in the picture-in-picture box (the one not on the
+    /// main screen); empty stops it
+    void setSecondaryRtspUrl(const QString &url);
+
     void init(QQuickWindow *mainWindow);
     void startVideoBackendInit();
     bool waitForVideoBackendReady(std::chrono::milliseconds timeout = std::chrono::minutes(1));
@@ -145,6 +149,7 @@ private:
     QSize _videoSize;
     QString _imageFile;
     QString _uvcVideoSourceID;
+    QString _secondaryRtspUrl;
 
 #ifdef QGC_UNITTEST_BUILD
     std::function<void()> _createVideoReceiversForTest;

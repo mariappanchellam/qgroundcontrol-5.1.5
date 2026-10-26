@@ -166,6 +166,16 @@ Item {
         property real leftEdgeCenterInset:  leftEdgeTopInset
     }
 
+    // DhakshaGroundControl: Skydroid / ZR10 camera controls, split around the screen edges
+    DhakshaCameraControls {
+        id:                 cameraControls
+        anchors.fill:       parent
+        z:                  QGroundControl.zOrderWidgets
+        leftInset:          toolStrip.visible ? toolStrip.leftEdgeTopInset : 0
+        topInset:           0
+        rightTopInset:      topRightPanel.visible ? topRightPanel.topEdgeRightInset : 0
+    }
+
     VehicleWarnings {
         anchors.centerIn:   parent
         z:                  QGroundControl.zOrderTopMost

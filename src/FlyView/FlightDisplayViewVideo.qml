@@ -71,6 +71,7 @@ Item {
         anchors.fill:   parent
         color:          "black"
         visible:        _showStreamLoader || _showUvcLoader
+        clip:           true    // DhakshaGroundControl: zoom beyond the camera's own magnifies the video inside this area
         function getWidth() {
             if(_ar != 0.0){
                 if(_isMode_FIT_HEIGHT
@@ -106,6 +107,7 @@ Item {
             anchors.fill:       videoContentArea
             visible:            _showStreamLoader
             sourceComponent:    videoOutputComponent
+            scale:              DhakshaCameraManager.camera ? DhakshaCameraManager.camera.screenZoom : 1
 
             property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
         }

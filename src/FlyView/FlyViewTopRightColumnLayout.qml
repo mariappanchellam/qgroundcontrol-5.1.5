@@ -20,6 +20,8 @@ ColumnLayout {
         id:                 photoVideoControlLoader
         Layout.alignment:   Qt.AlignRight
         sourceComponent:    globals.activeVehicle && globals.activeVehicle.cameraManager ? photoVideoControlComponent : undefined
+        // DhakshaGroundControl: the Skydroid / ZR10 camera controls take this place
+        visible:            !(DhakshaCameraManager.camera && DhakshaCameraManager.camera.controlSupported)
 
         property real rightEdgeCenterInset: visible ? parent.width - x : 0
 

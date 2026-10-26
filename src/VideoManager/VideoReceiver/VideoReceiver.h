@@ -24,6 +24,10 @@ public:
     {}
 
     bool isThermal() const { return (_name == QStringLiteral("thermalVideo")); }
+    /// DhakshaGroundControl: the second camera (day / night) in the picture-in-picture box
+    bool isDhakshaPip() const { return (_name == QStringLiteral("dhakshaPipVideo")); }
+    /// Not the main video, so its state and size never drive the main screen's
+    bool isSecondary() const { return isThermal() || isDhakshaPip(); }
 
     VideoSinkHandle sink() const { return _sink; }
     QQuickItem *widget() { return _widget; }

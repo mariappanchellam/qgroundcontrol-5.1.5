@@ -71,6 +71,7 @@ qt_add_qml_module(AppSettingsModule
         BluetoothSettings.qml
         DebugWindow.qml
         GcsPositionStatus.qml
+        GimbalCameraSettings.qml
         HelpSettings.qml
         LinkConfigurationManager.qml
         LogReplaySettings.qml

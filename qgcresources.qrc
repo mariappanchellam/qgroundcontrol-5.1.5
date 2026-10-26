@@ -15,6 +15,16 @@
         <file alias="QGCLogoArrow.svg">resources/QGCLogoArrow.svg</file>
         <file alias="rtl.svg">resources/rtl.svg</file>
         <file alias="SplashScreen">resources/SplashScreen.png</file>
+        <file alias="DhakshaCamera/center.svg">resources/DhakshaCamera/center.svg</file>
+        <file alias="DhakshaCamera/day.svg">resources/DhakshaCamera/day.svg</file>
+        <file alias="DhakshaCamera/down.svg">resources/DhakshaCamera/down.svg</file>
+        <file alias="DhakshaCamera/map.svg">resources/DhakshaCamera/map.svg</file>
+        <file alias="DhakshaCamera/night.svg">resources/DhakshaCamera/night.svg</file>
+        <file alias="DhakshaCamera/photo.svg">resources/DhakshaCamera/photo.svg</file>
+        <file alias="DhakshaCamera/record.svg">resources/DhakshaCamera/record.svg</file>
+        <file alias="DhakshaCamera/settings.svg">resources/DhakshaCamera/settings.svg</file>
+        <file alias="DhakshaCamera/zoom_in.svg">resources/DhakshaCamera/zoom_in.svg</file>
+        <file alias="DhakshaCamera/zoom_out.svg">resources/DhakshaCamera/zoom_out.svg</file>
         <file alias="DhakshaSplashLogo.svg">resources/DhakshaSplashLogo.svg</file>
         <file alias="DhakshaDroneBody.svg">resources/DhakshaDroneBody.svg</file>
         <file alias="DhakshaDronePropeller.svg">resources/DhakshaDronePropeller.svg</file>

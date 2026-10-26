@@ -18,6 +18,7 @@
 #include "AppSettings.h"
 #include "AudioOutput.h"
 #include "ColoredSvgImageProvider.h"
+#include "DhakshaCameraManager.h"
 #include "FollowMe.h"
 #include "GraphicsSetup.h"
 #include "JoystickManager.h"
@@ -297,6 +298,9 @@ bool QGCApplication::_initQmlRootWindow()
 void QGCApplication::_initForNormalAppBoot()
 {
     (void) _initVideo();
+
+    // DhakshaGroundControl: create the configured gimbal camera and point the video at its RTSP address before the UI starts
+    DhakshaCameraManager::instance()->start();
 
     (void) _initQmlRootWindow();
 

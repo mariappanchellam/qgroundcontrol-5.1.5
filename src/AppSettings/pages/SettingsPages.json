@@ -93,6 +93,11 @@
             "visible": "QGroundControl.settingsManager.videoSettings.userVisible"
         },
         {
+            "name": "Gimbal Camera",
+            "qml": "GimbalCameraSettings.qml",
+            "icon": "qrc:/res/DhakshaCamera/settings.svg"
+        },
+        {
             "divider": true
         },
         {

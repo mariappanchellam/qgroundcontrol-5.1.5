@@ -280,7 +280,8 @@ void VideoManager::_createVideoReceivers()
 #endif
     static const QStringList videoStreamList = {
         "videoContent",
-        "thermalVideo"
+        "thermalVideo",
+        "dhakshaPipVideo"
     };
 
     QStringList existing;
@@ -371,6 +372,9 @@ void VideoManager::startRecording(const QString &videoFile)
     const QString videoFileNameTemplate = savePath + "/" + videoFileUrl + ".%1" + ext;
 
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        if (receiver->isDhakshaPip()) {
+            continue;
+        }
         if (!receiver->started()) {
             qCDebug(VideoManagerLog) << "Video receiver is not ready.";
             continue;
@@ -400,6 +404,9 @@ void VideoManager::grabImage(const QString &imageFile)
     emit imageFileChanged(_imageFile);
 
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        if (receiver->isDhakshaPip()) {
+            continue;
+        }
         receiver->takeScreenshot(_imageFile);
         // QSharedPointer<QQuickItemGrabResult> result = receiver->widget()->grabToImage(const QSize &targetSize = QSize())
     }
@@ -519,7 +526,9 @@ void VideoManager::_videoSourceChanged()
         QGCCameraManager* camMgr = _activeVehicle->cameraManager();
         for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
             QGCVideoStreamInfo* info = nullptr;
-            if (receiver->isThermal()) {
+            if (receiver->isDhakshaPip()) {
+                info = nullptr;
+            } else if (receiver->isThermal()) {
                 info = camMgr ? camMgr->thermalStreamInstance() : nullptr;
             } else {
                 info = camMgr ? camMgr->currentStreamInstance() : nullptr;
@@ -689,6 +698,11 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
         return settingsChanged;
     }
 
+    if (receiver->isDhakshaPip()) {
+        settingsChanged |= _updateVideoUri(receiver, _secondaryRtspUrl);
+        return settingsChanged;
+    }
+
     settingsChanged |= _updateUVC(receiver);
     settingsChanged |= _updateAutoStream(receiver);
 
@@ -725,6 +739,19 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     return settingsChanged;
 }
 
+void VideoManager::setSecondaryRtspUrl(const QString &url)
+{
+    if (url == _secondaryRtspUrl) {
+        return;
+    }
+    _secondaryRtspUrl = url;
+    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        if (receiver->isDhakshaPip() && _updateSettings(receiver)) {
+            _restartVideo(receiver);
+        }
+    }
+}
+
 void VideoManager::_setActiveVehicle(Vehicle *vehicle)
 {
     qCDebug(VideoManagerLog) << Q_FUNC_INFO << "new vehicle" << vehicle << "old active vehicle" << _activeVehicle;
@@ -758,7 +785,7 @@ void VideoManager::_setActiveVehicle(Vehicle *vehicle)
         }
 
         for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-            if (_activeVehicle->cameraManager()) {
+            if (_activeVehicle->cameraManager() && !receiver->isDhakshaPip()) {
                 if (receiver->isThermal()) {
                     receiver->setVideoStreamInfo(_activeVehicle->cameraManager()->thermalStreamInstance());
                 } else {
@@ -913,7 +940,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     (void) connect(receiver, &VideoReceiver::streamingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "streaming changed, active:" << (active ? "yes" : "no");
-        if (!receiver->isThermal()) {
+        if (!receiver->isSecondary()) {
             _streaming = active;
             emit streamingChanged();
         }
@@ -921,7 +948,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     (void) connect(receiver, &VideoReceiver::decodingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "decoding changed, active:" << (active ? "yes" : "no");
-        if (!receiver->isThermal()) {
+        if (!receiver->isSecondary()) {
             _decoding = active;
             emit decodingChanged();
         }
@@ -929,7 +956,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     (void) connect(receiver, &VideoReceiver::recordingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "recording changed, active:" << (active ? "yes" : "no");
-        if (!receiver->isThermal()) {
+        if (!receiver->isSecondary()) {
             _recording = active;
             if (!active) {
                 _subtitleWriter->stopCapturingTelemetry();
@@ -940,14 +967,14 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     (void) connect(receiver, &VideoReceiver::recordingStarted, this, [this, receiver](const QString &filename) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "recording started";
-        if (!receiver->isThermal()) {
+        if (!receiver->isSecondary()) {
             _subtitleWriter->startCapturingTelemetry(filename, videoSize());
         }
     });
 
     (void) connect(receiver, &VideoReceiver::videoSizeChanged, this, [this, receiver](QSize size) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "resized. New resolution:" << size.width() << "x" << size.height();
-        if (!receiver->isThermal()) {
+        if (!receiver->isSecondary()) {
             _videoSize = size;
             emit videoSizeChanged();
             emit aspectRatioChanged();

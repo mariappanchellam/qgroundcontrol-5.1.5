@@ -105,6 +105,14 @@ Item {
             property real bottomEdgeLeftInset: visible ? height + anchors.margins : 0
         }
 
+        // DhakshaGroundControl: the other camera (day / night) in the PiP box while the video is on the main screen
+        DhakshaPipCamera {
+            anchors.fill:   _pipView
+            z:              _pipView.z + 1
+            boxShown:       _pipView.visible && _pipView.show && _pipView._isExpanded &&
+                            videoControl.pipState.state === videoControl.pipState.fullState
+        }
+
         FlyViewWidgetLayer {
             id:                     widgetLayer
             anchors.top:            parent.top

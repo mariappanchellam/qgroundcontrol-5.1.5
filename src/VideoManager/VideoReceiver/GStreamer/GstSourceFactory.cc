@@ -1,6 +1,7 @@
 #include "GstSourceFactory.h"
 
 #include <QtCore/QFile>
+#include <QtCore/QSettings>
 #include <QtCore/QUrl>
 #include <gst/gst.h>
 #include <gst/rtsp/gstrtsptransport.h>
@@ -311,8 +312,11 @@ GstElement* buildRtspSource(const QString& uri, const QUrl& sourceUrl, const Con
 
     // protocols mask enables TCP-interleaved fallback when UDP is blocked; without it
     // firewalled networks hang until tcp-timeout instead of negotiating TCP.
-    constexpr GstRTSPLowerTrans kRtspProtocols =
-        static_cast<GstRTSPLowerTrans>(GST_RTSP_LOWER_TRANS_UDP | GST_RTSP_LOWER_TRANS_TCP);
+    // DhakshaGroundControl: the camera's "Reliable (TCP)" video mode uses TCP only
+    const bool tcpOnly = QSettings().value(QStringLiteral("DhakshaCamera/rtspTcp"), false).toBool();
+    const GstRTSPLowerTrans kRtspProtocols = tcpOnly
+        ? GST_RTSP_LOWER_TRANS_TCP
+        : static_cast<GstRTSPLowerTrans>(GST_RTSP_LOWER_TRANS_UDP | GST_RTSP_LOWER_TRANS_TCP);
 
     // do-retransmission forwards to rtspsrc's internal rtpjitterbuffer (added 1.6);
     // drop-on-latency=TRUE unless jitterBuffer==Buffered (opt out of bounded playout).
