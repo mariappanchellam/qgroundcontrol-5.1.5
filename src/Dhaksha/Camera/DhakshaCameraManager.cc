@@ -33,7 +33,9 @@ namespace {
     const char* kOldSkydroidRtsp = "rtsp://192.168.144.108:554/stream=0";
     const char* kGimbalSpeedKey = "DhakshaCamera/gimbalMaxSpeed";
     const char* kThermalPaletteKey = "DhakshaCamera/thermalPalette";
-    const char* kPipCameraKey   = "pipCamera";
+    // Renamed from "pipCamera" so every install starts with the map in the box: a second camera stream
+    // shares the radio link and the decoder with the main one, so it only plays when the pilot asks
+    const char* kPipCameraKey   = "pipCameraOn";
 
     QString vendorKey(int vendor)
     {
@@ -69,7 +71,7 @@ DhakshaCameraManager::DhakshaCameraManager(QObject* parent)
         const int saved = settings.value(kVendorKey, VendorSkydroid).toInt();
         _vendor = saved == VendorZr10 ? VendorZr10 : VendorSkydroid;
     }
-    _pipCamera = settings.value(kPipCameraKey, true).toBool();
+    _pipCamera = settings.value(kPipCameraKey, false).toBool();
     settings.endGroup();
     _loadVendorSettings();
 }
@@ -276,11 +278,20 @@ void DhakshaCameraManager::setPipCamera(bool camera)
     }
 }
 
+void DhakshaCameraManager::setPipBoxShown(bool shown)
+{
+    if (shown != _pipBoxShown) {
+        _pipBoxShown = shown;
+        emit pipBoxShownChanged();
+        _updatePipVideo();
+    }
+}
+
 void DhakshaCameraManager::_updatePipVideo()
 {
-    // The box shows whichever camera is not on the main screen; with the map in the box the second
-    // stream stops, so the radio and the MK15 only carry it while it is shown
-    const QString url = _pipCamera && pipAvailable() ? (_nightView ? _rtspUrl : _nightRtspUrl) : QString();
+    // The box shows whichever camera is not on the main screen. The second stream stops with the map in
+    // the box or the box hidden, so the radio and the decoder only carry it while it is on screen
+    const QString url = _pipCamera && _pipBoxShown && pipAvailable() ? (_nightView ? _rtspUrl : _nightRtspUrl) : QString();
 #ifndef DHAKSHA_CAMERA_NO_QGC
     VideoManager::instance()->setSecondaryRtspUrl(url);
 #else
@@ -364,10 +375,9 @@ void DhakshaCameraManager::_applyVideoMode()
     settings.setValue(kRtspKeepLateKey, _videoMode == VideoLowDelay);
 #ifndef DHAKSHA_CAMERA_NO_QGC
     VideoSettings* videoSettings = SettingsManager::instance()->videoSettings();
-    const uint latencyMs = _videoMode == VideoSmooth ? 150 : 100;
+    // Low delay holds packets 17 ms at most, as the 4.2 build did; otherwise it kept whatever buffer an earlier mode set
+    const uint latencyMs = _videoMode == VideoSmooth ? 150 : _videoMode == VideoReliable ? 100 : 17;
     videoSettings->lowLatencyMode()->setRawValue(_videoMode == VideoLowDelay);
-    if (_videoMode != VideoLowDelay) {
-        videoSettings->rtpJitterLatencyMs()->setRawValue(latencyMs);
-    }
+    videoSettings->rtpJitterLatencyMs()->setRawValue(latencyMs);
 #endif
 }

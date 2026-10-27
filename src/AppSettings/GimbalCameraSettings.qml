@@ -80,7 +80,7 @@ Rectangle {
             QGCLabel { text: qsTr("Video") }
             QGCComboBox {
                 Layout.preferredWidth:  _fieldWidth * 1.6
-                model:                  [ qsTr("Low delay (UDP, low latency mode)"), qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
+                model:                  [ qsTr("Low delay (UDP, 17 ms buffer)"), qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
                 currentIndex:           DhakshaCameraManager.videoMode
                 onActivated:            (index) => DhakshaCameraManager.videoMode = index
             }

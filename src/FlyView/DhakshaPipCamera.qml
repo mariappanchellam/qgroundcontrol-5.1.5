@@ -26,6 +26,10 @@ Item {
     property bool boxShown: false
 
     readonly property bool _available:  DhakshaCameraManager.pipAvailable && boxShown
+
+    onBoxShownChanged:      DhakshaCameraManager.pipBoxShown = boxShown
+    Component.onCompleted:  DhakshaCameraManager.pipBoxShown = boxShown
+    Component.onDestruction: DhakshaCameraManager.pipBoxShown = false
     readonly property real _button:     ScreenTools.defaultFontPixelHeight * 1.6
     readonly property string _iconPath: "/res/DhakshaCamera/"
 

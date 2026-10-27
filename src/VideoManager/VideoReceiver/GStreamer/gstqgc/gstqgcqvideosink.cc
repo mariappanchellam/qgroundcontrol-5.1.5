@@ -18,12 +18,25 @@
 #endif
 
 #include <atomic>
+#include <memory>
+#include <mutex>
 
 QGC_LOGGING_CATEGORY(GstQgcQVideoSinkLog, "Video.GStreamer.QgcQVideoSink")
 
 #define GST_CAT_DEFAULT gst_qgc_debug
 
 namespace {
+
+/// Newest decoded frame waiting for the GUI thread. Only one delivery is ever queued: frames
+/// that arrive meanwhile replace the waiting one, so a busy GUI thread skips stale frames
+/// instead of queueing them up and showing the video ever later. Shared with the queued
+/// delivery so it outlives the element if the element is finalized first.
+struct PendingFrame
+{
+    std::mutex mutex;
+    QVideoFrame frame;
+    bool deliveryQueued = false;
+};
 
 /// Non-POD state hung off the GObject instance via `priv`. Owned, new'd in instance_init,
 /// delete'd in finalize.
@@ -43,6 +56,7 @@ struct PrivState
     std::atomic<quint64> delivered_frames{0};
     // Negotiated caps held from set_caps; avoids per-frame allocation and preserves DRM modifiers.
     GstCaps* cached_caps{nullptr};
+    std::shared_ptr<PendingFrame> pending = std::make_shared<PendingFrame>();
 #if defined(QGC_HAS_ANY_GPU_PATH)
     // Per-caps-epoch resolved-path cache; reset on set_caps so a format change re-runs path selection.
     HwResolvedPathCache resolved_path_cache = {};
@@ -74,9 +88,30 @@ QPointer<QVideoSink> snapshot_sink(GstQgcQVideoSink* self, HwVideoBufferContext*
 /// while the destroyed-handler blocks here is purged by ~QObject's removePostedEvents.
 void push_frame_queued(GstQgcQVideoSink* self, QVideoFrame&& frame)
 {
+    const std::shared_ptr<PendingFrame> pending = priv_of(self)->pending;
+    std::lock_guard<std::mutex> pendingLock(pending->mutex);
+    pending->frame = std::move(frame);
+    if (pending->deliveryQueued) {
+        return;
+    }
     GST_OBJECT_LOCK(self);
     if (QVideoSink* sink = static_cast<QVideoSink*>(self->qvideosink)) {
-        QMetaObject::invokeMethod(sink, &QVideoSink::setVideoFrame, Qt::QueuedConnection, std::move(frame));
+        pending->deliveryQueued = true;
+        QMetaObject::invokeMethod(
+            sink,
+            [sink, pending]() {
+                QVideoFrame latest;
+                {
+                    std::lock_guard<std::mutex> lock(pending->mutex);
+                    latest = std::move(pending->frame);
+                    pending->frame = QVideoFrame();
+                    pending->deliveryQueued = false;
+                }
+                sink->setVideoFrame(latest);
+            },
+            Qt::QueuedConnection);
+    } else {
+        pending->frame = QVideoFrame();
     }
     GST_OBJECT_UNLOCK(self);
 }
@@ -147,6 +182,12 @@ static void gst_qgc_q_video_sink_set_property(GObject* obj, guint id, const GVal
             // Reset PTS guard on sink swap so a new sink doesn't see a stale last_pts_ns
             // from the previous sink and erroneously drop the first frames.
             priv_of(self)->last_pts_ns.store(-1, std::memory_order_relaxed);
+            {
+                // A delivery queued to a destroyed sink never runs; let the next frame queue a new one
+                std::lock_guard<std::mutex> lock(priv_of(self)->pending->mutex);
+                priv_of(self)->pending->frame = QVideoFrame();
+                priv_of(self)->pending->deliveryQueued = false;
+            }
             break;
         }
         case PROP_ACTIVE:
