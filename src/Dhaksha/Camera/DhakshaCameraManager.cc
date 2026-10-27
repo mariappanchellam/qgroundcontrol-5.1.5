@@ -26,8 +26,9 @@ namespace {
     const char* kRtspKey        = "rtspUrl";
     const char* kNightRtspKey   = "nightRtspUrl";
     const char* kVideoModeKey   = "videoMode";
-    // Read by GstSourceFactory when it opens the RTSP stream: TCP only (VideoReliable)
+    // Read by GstSourceFactory when it opens the RTSP stream: TCP only (VideoReliable), keep late packets (VideoLowDelay)
     const char* kRtspTcpKey     = "DhakshaCamera/rtspTcp";
+    const char* kRtspKeepLateKey = "DhakshaCamera/rtspKeepLate";
     // Day address saved by builds before the Skydroid's real one (port 554 stream=1) was known
     const char* kOldSkydroidRtsp = "rtsp://192.168.144.108:554/stream=0";
     const char* kGimbalSpeedKey = "DhakshaCamera/gimbalMaxSpeed";
@@ -356,7 +357,11 @@ void DhakshaCameraManager::_applyVideoMode()
 {
     // QGC restarts the stream itself when these settings change
     const bool tcp = _videoMode == VideoReliable;
-    QSettings().setValue(kRtspTcpKey, tcp);
+    QSettings settings;
+    settings.setValue(kRtspTcpKey, tcp);
+    // Low delay shows late video instead of dropping it, as in 4.2: a dropped packet breaks the picture
+    // (smears, blocks) until the camera's next key frame
+    settings.setValue(kRtspKeepLateKey, _videoMode == VideoLowDelay);
 #ifndef DHAKSHA_CAMERA_NO_QGC
     VideoSettings* videoSettings = SettingsManager::instance()->videoSettings();
     const uint latencyMs = _videoMode == VideoSmooth ? 150 : 100;

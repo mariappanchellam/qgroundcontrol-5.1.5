@@ -320,7 +320,9 @@ GstElement* buildRtspSource(const QString& uri, const QUrl& sourceUrl, const Con
 
     // do-retransmission forwards to rtspsrc's internal rtpjitterbuffer (added 1.6);
     // drop-on-latency=TRUE unless jitterBuffer==Buffered (opt out of bounded playout).
-    const gboolean dropOnLatency = (config.jitterBuffer == JitterBuffer::Buffered) ? FALSE : TRUE;
+    // DhakshaGroundControl: the camera's "Low delay" video mode keeps late packets, as the 4.2 build did
+    const bool keepLate = QSettings().value(QStringLiteral("DhakshaCamera/rtspKeepLate"), false).toBool();
+    const gboolean dropOnLatency = (config.jitterBuffer == JitterBuffer::Buffered || keepLate) ? FALSE : TRUE;
     g_object_set(source, "location", cleanLocation.constData(), "latency", latencyMs, "do-rtcp", TRUE,
                  "do-retransmission", config.doRetransmission ? TRUE : FALSE, "tcp-timeout", kRtspTcpTimeoutUs,
                  "udp-reconnect", TRUE, "drop-on-latency", dropOnLatency, "retry", kRtspRetry, "protocols",
