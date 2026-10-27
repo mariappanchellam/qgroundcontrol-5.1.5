@@ -142,7 +142,13 @@ def print_packages() -> None:
         ],
         check=True,
     )
-    write_github_output({"packages": result.stdout.strip()})
+    # Swap packages the runner's apt index no longer carries (e.g. libgstreamer-plugins-good1.0-dev
+    # replaced by libgstreamer-plugins-extra1.0-dev); apt-get aborts the whole install on one unknown
+    # package. Needs a fresh index, so the action runs enable-universe (which updates it) first.
+    from setup.install_dependencies._debian import resolve_package_alternatives
+
+    packages = resolve_package_alternatives(result.stdout.split())
+    write_github_output({"packages": " ".join(packages)})
 
 
 def main() -> None:

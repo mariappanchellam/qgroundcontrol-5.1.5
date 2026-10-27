@@ -69,16 +69,16 @@ runs:
               args.append('--nsis')
           sys.exit(subprocess.run(args).returncode)
 
+    - name: Enable universe repository (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: python3 "${GITHUB_WORKSPACE}/.github/scripts/install_dependencies_helper.py" enable-universe
+
     - name: Get system package list (Linux)
       if: runner.os == 'Linux'
       id: linux-deps
       shell: bash
       run: python3 "${GITHUB_WORKSPACE}/.github/scripts/install_dependencies_helper.py" print-packages
-
-    - name: Enable universe repository (Linux)
-      if: runner.os == 'Linux'
-      shell: bash
-      run: python3 "${GITHUB_WORKSPACE}/.github/scripts/install_dependencies_helper.py" enable-universe
 
     # Cache downloaded .debs so slow apt mirrors only hurt on a cache miss.
     # Keyed on the package-list sources plus a year-month stamp: actions/cache
