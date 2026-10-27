@@ -43,6 +43,10 @@ class VideoManager : public QObject
     Q_PROPERTY(QSize    videoSize               READ videoSize                                  NOTIFY videoSizeChanged)
     Q_PROPERTY(QString  imageFile               READ imageFile                                  NOTIFY imageFileChanged)
     Q_PROPERTY(QString  uvcVideoSourceID        READ uvcVideoSourceID                           NOTIFY uvcVideoSourceIDChanged)
+    // DhakshaGroundControl: main video decoder and its frame counts, shown in Settings > Gimbal Camera
+    Q_PROPERTY(QString  decoderName             READ decoderName                                NOTIFY decoderStatsChanged)
+    Q_PROPERTY(quint64  decodedFrames           READ decodedFrames                              NOTIFY decoderStatsChanged)
+    Q_PROPERTY(quint64  droppedFrames           READ droppedFrames                              NOTIFY decoderStatsChanged)
 
     friend class VideoManagerInitTest;
 
@@ -82,6 +86,9 @@ public:
     QSize videoSize() const { return _videoSize; }
     QString imageFile() const { return _imageFile; }
     QString uvcVideoSourceID() const { return _uvcVideoSourceID; }
+    QString decoderName() const { return _decoderName; }
+    quint64 decodedFrames() const { return _decodedFrames; }
+    quint64 droppedFrames() const { return _droppedFrames; }
     void setfullScreen(bool on);
 
 signals:
@@ -99,8 +106,10 @@ signals:
     void streamingChanged();
     void uvcVideoSourceIDChanged();
     void videoSizeChanged();
+    void decoderStatsChanged();
 
 private slots:
+    void _mainDecoderStatsChanged();
     void _communicationLostChanged(bool communicationLost);
     void _setActiveVehicle(Vehicle *vehicle);
     void _videoSourceChanged();
@@ -150,6 +159,9 @@ private:
     QString _imageFile;
     QString _uvcVideoSourceID;
     QString _secondaryRtspUrl;
+    QString _decoderName;
+    quint64 _decodedFrames = 0;
+    quint64 _droppedFrames = 0;
 
 #ifdef QGC_UNITTEST_BUILD
     std::function<void()> _createVideoReceiversForTest;

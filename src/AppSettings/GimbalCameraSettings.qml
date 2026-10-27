@@ -103,6 +103,17 @@ Rectangle {
                     : qsTr("%1: no reply from camera").arg(_camera.vendorName)
             }
 
+            // What actually arrives from the camera, to tell a low-resolution stream from a decoding problem
+            QGCLabel { text: qsTr("Received Video") }
+            QGCLabel {
+                property var _vm: QGroundControl.videoManager
+                text: !_vm.decoding ? qsTr("No video")
+                    : qsTr("%1 x %2, decoder %3, dropped %4 of %5 frames")
+                        .arg(_vm.videoSize.width).arg(_vm.videoSize.height)
+                        .arg(_vm.decoderName !== "" ? _vm.decoderName : qsTr("unknown"))
+                        .arg(_vm.droppedFrames).arg(_vm.decodedFrames + _vm.droppedFrames)
+            }
+
             QGCButton {
                 text:       qsTr("Restore Defaults")
                 enabled:    DhakshaCameraManager.vendor !== 0

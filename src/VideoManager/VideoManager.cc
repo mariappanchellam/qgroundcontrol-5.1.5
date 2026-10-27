@@ -739,6 +739,18 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     return settingsChanged;
 }
 
+void VideoManager::_mainDecoderStatsChanged()
+{
+    const QObject *receiver = sender();
+    if (!receiver) {
+        return;
+    }
+    _decoderName = receiver->property("decoderName").toString();
+    _decodedFrames = receiver->property("processedFrames").toULongLong();
+    _droppedFrames = receiver->property("droppedFrames").toULongLong();
+    emit decoderStatsChanged();
+}
+
 void VideoManager::setSecondaryRtspUrl(const QString &url)
 {
     if (url == _secondaryRtspUrl) {
@@ -971,6 +983,11 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
             _subtitleWriter->startCapturingTelemetry(filename, videoSize());
         }
     });
+
+    // Only the GStreamer receiver has decoder statistics; matched by name so this builds without it
+    if (!receiver->isSecondary() && (receiver->metaObject()->indexOfSignal("decoderStatsChanged()") >= 0)) {
+        (void) connect(receiver, SIGNAL(decoderStatsChanged()), this, SLOT(_mainDecoderStatsChanged()));
+    }
 
     (void) connect(receiver, &VideoReceiver::videoSizeChanged, this, [this, receiver](QSize size) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "resized. New resolution:" << size.width() << "x" << size.height();
