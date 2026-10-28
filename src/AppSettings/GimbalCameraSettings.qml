@@ -77,10 +77,23 @@ Rectangle {
                 onActivated:            (index) => DhakshaCameraManager.thermalPalette = index
             }
 
+            QGCLabel {
+                text:       qsTr("Video Player")
+                visible:    DhakshaCameraManager.nativeVideoSupported
+            }
+            QGCComboBox {
+                Layout.preferredWidth:  _fieldWidth * 1.6
+                visible:                DhakshaCameraManager.nativeVideoSupported
+                model:                  [ qsTr("Fast (hardware decoder straight to screen)"), qsTr("Standard (QGroundControl)") ]
+                currentIndex:           DhakshaCameraManager.nativeVideo ? 0 : 1
+                onActivated:            (index) => DhakshaCameraManager.nativeVideo = (index === 0)
+            }
+
             QGCLabel { text: qsTr("Video") }
             QGCComboBox {
                 Layout.preferredWidth:  _fieldWidth * 1.6
-                model:                  [ qsTr("Low delay (UDP, 17 ms buffer)"), qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
+                model:                  [ DhakshaCameraManager.nativeVideo && DhakshaCameraManager.nativeVideoSupported ? qsTr("Low delay (UDP, no buffer)") : qsTr("Low delay (UDP, 17 ms buffer)"),
+                                          qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
                 currentIndex:           DhakshaCameraManager.videoMode
                 onActivated:            (index) => DhakshaCameraManager.videoMode = index
             }
@@ -107,7 +120,8 @@ Rectangle {
             QGCLabel { text: qsTr("Received Video") }
             QGCLabel {
                 property var _vm: QGroundControl.videoManager
-                text: !_vm.decoding ? qsTr("No video")
+                text: DhakshaCameraManager.nativeVideoActive ? DhakshaCameraManager.nativeVideoStatus
+                    : !_vm.decoding ? qsTr("No video")
                     : qsTr("%1 x %2, decoder %3, dropped %4 of %5 frames")
                         .arg(_vm.videoSize.width).arg(_vm.videoSize.height)
                         .arg(_vm.decoderName !== "" ? _vm.decoderName : qsTr("unknown"))

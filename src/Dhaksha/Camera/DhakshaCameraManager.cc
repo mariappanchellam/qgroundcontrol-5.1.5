@@ -5,6 +5,7 @@
  ****************************************************************************/
 
 #include "DhakshaCameraManager.h"
+#include "DhakshaNativePlayer.h"
 #include "SiyiGimbalCamera.h"
 #include "SkydroidGimbalCamera.h"
 
@@ -36,6 +37,7 @@ namespace {
     // Renamed from "pipCamera" so every install starts with the map in the box: a second camera stream
     // shares the radio link and the decoder with the main one, so it only plays when the pilot asks
     const char* kPipCameraKey   = "pipCameraOn";
+    const char* kNativeVideoKey = "nativeVideo";
 
     QString vendorKey(int vendor)
     {
@@ -72,6 +74,7 @@ DhakshaCameraManager::DhakshaCameraManager(QObject* parent)
         _vendor = saved == VendorZr10 ? VendorZr10 : VendorSkydroid;
     }
     _pipCamera = settings.value(kPipCameraKey, false).toBool();
+    _nativeVideo = settings.value(kNativeVideoKey, true).toBool();
     settings.endGroup();
     _loadVendorSettings();
 }
@@ -309,8 +312,57 @@ void DhakshaCameraManager::start()
 {
     _createCamera();
     _applyVideoMode();
+    _applyNativeVideo();
     _startVideoStream();
     _updatePipVideo();
+    emit videoRestartRequested();
+}
+
+bool DhakshaCameraManager::nativeVideoSupported()
+{
+    return DhakshaNativePlayer::supported();
+}
+
+bool DhakshaCameraManager::nativeVideoActive() const
+{
+    return nativeVideoSupported() && _nativeVideo && (_vendor != VendorNone);
+}
+
+void DhakshaCameraManager::setNativeVideo(bool native)
+{
+    if (native != _nativeVideo) {
+        _nativeVideo = native;
+        QSettings settings;
+        settings.beginGroup(kSettingsGroup);
+        settings.setValue(kNativeVideoKey, native);
+        _applyNativeVideo();
+    }
+}
+
+int DhakshaCameraManager::nativeLatencyMs() const
+{
+    // Low delay keeps no network buffer at all: each frame is decoded the moment it arrives
+    switch (_activeVideoMode) {
+    case VideoSmooth:   return 150;
+    case VideoReliable: return 100;
+    default:            return 0;
+    }
+}
+
+void DhakshaCameraManager::_applyNativeVideo()
+{
+#ifndef DHAKSHA_CAMERA_NO_QGC
+    VideoManager::instance()->setMainVideoExternal(nativeVideoActive());
+#endif
+    emit nativeVideoChanged();
+}
+
+void DhakshaCameraManager::setNativeVideoStatus(const QString& status)
+{
+    if (status != _nativeVideoStatus) {
+        _nativeVideoStatus = status;
+        emit nativeVideoStatusChanged();
+    }
 }
 
 void DhakshaCameraManager::_createCamera()
@@ -352,6 +404,10 @@ void DhakshaCameraManager::_startVideoStream()
 
 void DhakshaCameraManager::_showVideo(const QString& rtspUrl)
 {
+    if (!rtspUrl.isEmpty() && (rtspUrl != _mainVideoUrl)) {
+        _mainVideoUrl = rtspUrl;
+        emit mainVideoUrlChanged();
+    }
 #ifndef DHAKSHA_CAMERA_NO_QGC
     if (rtspUrl.isEmpty()) {
         return;
@@ -366,6 +422,10 @@ void DhakshaCameraManager::_showVideo(const QString& rtspUrl)
 
 void DhakshaCameraManager::_applyVideoMode()
 {
+    if (_videoMode != _activeVideoMode) {
+        _activeVideoMode = _videoMode;
+        emit activeVideoModeChanged();
+    }
     // QGC restarts the stream itself when these settings change
     const bool tcp = _videoMode == VideoReliable;
     QSettings settings;

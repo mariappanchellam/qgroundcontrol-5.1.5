@@ -703,6 +703,11 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
         return settingsChanged;
     }
 
+    if (_mainVideoExternal) {
+        settingsChanged |= _updateVideoUri(receiver, QString());
+        return settingsChanged;
+    }
+
     settingsChanged |= _updateUVC(receiver);
     settingsChanged |= _updateAutoStream(receiver);
 
@@ -737,6 +742,19 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     }
 
     return settingsChanged;
+}
+
+void VideoManager::setMainVideoExternal(bool external)
+{
+    if (external == _mainVideoExternal) {
+        return;
+    }
+    _mainVideoExternal = external;
+    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        if (!receiver->isSecondary() && _updateSettings(receiver)) {
+            _restartVideo(receiver);
+        }
+    }
 }
 
 void VideoManager::_mainDecoderStatsChanged()

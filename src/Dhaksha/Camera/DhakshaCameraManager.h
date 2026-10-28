@@ -60,6 +60,13 @@ public:
     Q_PROPERTY(QStringList thermalPaletteNames READ thermalPaletteNames CONSTANT)
     Q_PROPERTY(int  thermalPalette  READ thermalPalette WRITE setThermalPalette NOTIFY thermalPaletteChanged)  ///< Night camera palette, saved; sent when chosen and when the camera connects
     Q_PROPERTY(int  videoMode       READ videoMode      WRITE setVideoMode      NOTIFY videoModeChanged)       ///< VideoMode, saved per camera; used from the next apply()
+    Q_PROPERTY(bool nativeVideoSupported READ nativeVideoSupported CONSTANT)                                    ///< The fast player works on this platform (Android)
+    Q_PROPERTY(bool nativeVideo     READ nativeVideo    WRITE setNativeVideo    NOTIFY nativeVideoChanged)     ///< Fast player chosen in the settings, saved
+    Q_PROPERTY(bool nativeVideoActive READ nativeVideoActive                    NOTIFY nativeVideoChanged)     ///< The Fly View plays the main camera with the fast player
+    Q_PROPERTY(QString mainVideoUrl READ mainVideoUrl                           NOTIFY mainVideoUrlChanged)    ///< Camera stream on the main screen (day or night)
+    Q_PROPERTY(int  nativeLatencyMs READ nativeLatencyMs                        NOTIFY activeVideoModeChanged) ///< Fast player network buffer for the applied video mode
+    Q_PROPERTY(bool nativeTcpOnly   READ nativeTcpOnly                          NOTIFY activeVideoModeChanged)
+    Q_PROPERTY(QString nativeVideoStatus READ nativeVideoStatus WRITE setNativeVideoStatus NOTIFY nativeVideoStatusChanged) ///< What the fast player receives, set by the Fly View
 
     static DhakshaCameraManager* instance();
     static DhakshaCameraManager* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
@@ -79,6 +86,15 @@ public:
     void                    setSkydroidGimbalStyle(int style);
     int                     videoMode() const { return _videoMode; }
     void                    setVideoMode(int mode);
+    static bool             nativeVideoSupported();
+    bool                    nativeVideo () const { return _nativeVideo; }
+    void                    setNativeVideo(bool native);
+    bool                    nativeVideoActive() const;
+    QString                 mainVideoUrl() const { return _mainVideoUrl; }
+    int                     nativeLatencyMs() const;
+    bool                    nativeTcpOnly() const { return _activeVideoMode == VideoReliable; }
+    QString                 nativeVideoStatus() const { return _nativeVideoStatus; }
+    void                    setNativeVideoStatus(const QString& status);
     static int              defaultVideoMode(int vendor);
     int                     gimbalMaxSpeed() const;
     void                    setGimbalMaxSpeed(int degreesPerSecond);
@@ -125,6 +141,12 @@ signals:
     void thermalPaletteChanged();
     void videoModeChanged();
     void cameraChanged  ();
+    void nativeVideoChanged();
+    void mainVideoUrlChanged();
+    void activeVideoModeChanged();
+    void nativeVideoStatusChanged();
+    /// apply(): the fast player reconnects to the camera
+    void videoRestartRequested();
 
 private:
     explicit DhakshaCameraManager(QObject* parent = nullptr);
@@ -132,6 +154,7 @@ private:
     void _loadVendorSettings    ();
     void _saveSettings          ();
     void _createCamera          ();
+    void _applyNativeVideo      ();
     void _startVideoStream      ();
     void _showVideo             (const QString& rtspUrl);
     void _applyVideoMode        ();
@@ -145,5 +168,9 @@ private:
     bool                    _nightView  = false;
     bool                    _pipCamera  = false;
     bool                    _pipBoxShown = false;
+    bool                    _nativeVideo = true;
+    QString                 _mainVideoUrl;
+    int                     _activeVideoMode = VideoLowDelay;
+    QString                 _nativeVideoStatus;
     DhakshaGimbalCamera*    _camera     = nullptr;
 };

@@ -66,6 +66,10 @@ public:
     /// main screen); empty stops it
     void setSecondaryRtspUrl(const QString &url);
 
+    /// DhakshaGroundControl: the main camera is played by the fast player (DhakshaVideoItem), so
+    /// QGC's own receiver leaves it alone; the video settings stay as they are
+    void setMainVideoExternal(bool external);
+
     void init(QQuickWindow *mainWindow);
     void startVideoBackendInit();
     bool waitForVideoBackendReady(std::chrono::milliseconds timeout = std::chrono::minutes(1));
@@ -159,6 +163,7 @@ private:
     QString _imageFile;
     QString _uvcVideoSourceID;
     QString _secondaryRtspUrl;
+    bool _mainVideoExternal = false;
     QString _decoderName;
     quint64 _decodedFrames = 0;
     quint64 _droppedFrames = 0;

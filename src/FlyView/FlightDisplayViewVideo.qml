@@ -23,7 +23,9 @@ Item {
     property var    _camera:            _isCamera ? _dynamicCameras.cameras.get(_curCameraIndex) : null
     property bool   _hasZoom:           _camera && _camera.hasZoom
     property int    _fitMode:           QGroundControl.settingsManager.videoSettings.videoFit.rawValue
-    property bool   _showStreamLoader:  QGroundControl.videoManager.decoding
+    // DhakshaGroundControl: the fast player plays the main camera instead of QGC's receiver
+    property bool   _nativeVideo:       DhakshaCameraManager.nativeVideoActive
+    property bool   _showStreamLoader:  QGroundControl.videoManager.decoding || _nativeVideo
     property bool   _showUvcLoader:     QGroundControl.videoManager.isUvc
 
     property bool   _isMode_FIT_WIDTH:  _fitMode === 0
@@ -105,11 +107,45 @@ Item {
         Loader {
             id:                 videoStreamLoader
             anchors.fill:       videoContentArea
-            visible:            _showStreamLoader
+            visible:            _showStreamLoader && !_nativeVideo
             sourceComponent:    videoOutputComponent
             scale:              DhakshaCameraManager.camera ? DhakshaCameraManager.camera.screenZoom : 1
 
             property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
+        }
+        // DhakshaGroundControl: fast player, each frame drawn straight from the hardware decoder
+        DhakshaVideoItem {
+            id:             dhakshaVideo
+            anchors.fill:   parent
+            visible:        _nativeVideo
+            source:         _nativeVideo ? DhakshaCameraManager.mainVideoUrl : ""
+            latencyMs:      DhakshaCameraManager.nativeLatencyMs
+            tcpOnly:        DhakshaCameraManager.nativeTcpOnly
+            cropToFill:     _isMode_FILL
+            scale:          DhakshaCameraManager.camera ? DhakshaCameraManager.camera.screenZoom : 1
+
+            function reportStatus() {
+                DhakshaCameraManager.nativeVideoStatus = !playing ? qsTr("Fast player: waiting for video")
+                    : qsTr("%1 x %2, %3, fast player").arg(videoSize.width).arg(videoSize.height)
+                        .arg(decoderName !== "" ? decoderName : qsTr("hardware decoder"))
+            }
+
+            onPlayingChanged:   reportStatus()
+            onVideoSizeChanged: reportStatus()
+
+            Connections {
+                target:                         DhakshaCameraManager
+                function onVideoRestartRequested() { dhakshaVideo.restart() }
+            }
+
+            QGCLabel {
+                anchors.centerIn:   parent
+                visible:            !dhakshaVideo.playing
+                text:               qsTr("WAITING FOR VIDEO")
+                font.bold:          true
+                color:              "white"
+                font.pointSize:     useSmallFont ? ScreenTools.smallFontPointSize : ScreenTools.largeFontPointSize
+            }
         }
         Component {
             id: videoOutputComponent
