@@ -12,14 +12,18 @@ if(CPM_SOURCE_CACHE)
 else()
     set(_android_openssl_dl_dir "${CMAKE_BINARY_DIR}/_deps/android_openssl-dl")
 endif()
-qgc_resilient_download(
-    FILENAME "android_openssl-${_android_openssl_rev}.zip"
-    DESTINATION_DIR "${_android_openssl_dl_dir}"
-    RESULT_VAR _android_openssl_archive
-    URLS "https://github.com/KDAB/android_openssl/archive/${_android_openssl_rev}.zip"
-    EXPECTED_HASH "${_android_openssl_hash}"
-    LOG_TAG "Android OpenSSL"
-)
+# A git checkout of KDAB/android_openssl at _android_openssl_rev can be given instead with
+# -DCPM_android_openssl_SOURCE=<dir>, for build machines that reach GitHub only through git
+if(NOT CPM_android_openssl_SOURCE)
+    qgc_resilient_download(
+        FILENAME "android_openssl-${_android_openssl_rev}.zip"
+        DESTINATION_DIR "${_android_openssl_dl_dir}"
+        RESULT_VAR _android_openssl_archive
+        URLS "https://github.com/KDAB/android_openssl/archive/${_android_openssl_rev}.zip"
+        EXPECTED_HASH "${_android_openssl_hash}"
+        LOG_TAG "Android OpenSSL"
+    )
+endif()
 CPMAddPackage(
     NAME android_openssl
     URL "${_android_openssl_archive}"
