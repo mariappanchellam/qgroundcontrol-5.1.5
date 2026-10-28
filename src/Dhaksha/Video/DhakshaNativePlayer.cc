@@ -328,8 +328,11 @@ void DhakshaNativePlayer::_createPipeline()
     const GstRTSPLowerTrans protocols =
         _tcpOnly ? GST_RTSP_LOWER_TRANS_TCP
                  : static_cast<GstRTSPLowerTrans>(GST_RTSP_LOWER_TRANS_UDP | GST_RTSP_LOWER_TRANS_TCP);
+    // Over TCP nothing is lost, so nothing is dropped for arriving late either: a dropped packet would
+    // smear the picture just like a lost one
+    const gboolean dropOnLatency = (!_tcpOnly && (_latencyMs > 0)) ? TRUE : FALSE;
     g_object_set(source, "location", location.constData(), "latency", static_cast<guint>(_latencyMs), "drop-on-latency",
-                 (_latencyMs > 0) ? TRUE : FALSE, "do-retransmission", FALSE, "udp-reconnect", TRUE, "tcp-timeout",
+                 dropOnLatency, "do-retransmission", FALSE, "udp-reconnect", TRUE, "tcp-timeout",
                  static_cast<guint64>(2000000), "protocols", protocols, nullptr);
     (void) g_signal_connect(source, "pad-added", G_CALLBACK(&DhakshaNativePlayer::_onPadAdded), this);
 

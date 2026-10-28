@@ -92,7 +92,9 @@ public:
     bool                    nativeVideoActive() const;
     QString                 mainVideoUrl() const { return _mainVideoUrl; }
     int                     nativeLatencyMs() const;
-    bool                    nativeTcpOnly() const { return _activeVideoMode == VideoReliable; }
+    /// The fast player always receives over TCP, as the camera makers' apps do: a lost UDP packet smears the
+    /// picture until the next key frame, which fast gimbal moves (large frames, bursts of packets) made frequent
+    bool                    nativeTcpOnly() const { return true; }
     QString                 nativeVideoStatus() const { return _nativeVideoStatus; }
     void                    setNativeVideoStatus(const QString& status);
     static int              defaultVideoMode(int vendor);

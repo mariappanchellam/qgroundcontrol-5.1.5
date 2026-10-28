@@ -92,8 +92,10 @@ Rectangle {
             QGCLabel { text: qsTr("Video") }
             QGCComboBox {
                 Layout.preferredWidth:  _fieldWidth * 1.6
-                model:                  [ DhakshaCameraManager.nativeVideo && DhakshaCameraManager.nativeVideoSupported ? qsTr("Low delay (UDP, no buffer)") : qsTr("Low delay (UDP, 17 ms buffer)"),
-                                          qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
+                model:                  _fastPlayer ? [ qsTr("Low delay (TCP, no buffer)"), qsTr("Smooth (TCP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
+                                            : [ qsTr("Low delay (UDP, 17 ms buffer)"), qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
+
+                readonly property bool _fastPlayer: DhakshaCameraManager.nativeVideo && DhakshaCameraManager.nativeVideoSupported
                 currentIndex:           DhakshaCameraManager.videoMode
                 onActivated:            (index) => DhakshaCameraManager.videoMode = index
             }
