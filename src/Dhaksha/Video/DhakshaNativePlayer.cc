@@ -3,6 +3,8 @@
 #include <QtCore/QMutexLocker>
 #include <chrono>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #ifdef Q_OS_ANDROID
 #define DHAKSHA_NATIVE_VIDEO 1
@@ -145,83 +147,165 @@ void DhakshaDecoderCore::queueAccessUnit(QByteArray accessUnit, bool keyFrame)
     }
     _queue.push_back({std::move(accessUnit), keyFrame});
     _trimQueueLocked();
-    _feedLocked();
-    if (!_codec) {
-        _wake.notify_all();
-    }
+    _wake.notify_all();
 }
 
 void DhakshaDecoderCore::_trimQueueLocked()
 {
-    while (_queue.size() > kMaxQueuedFrames) {
-        _queue.pop_front();
-        _framesDropped.fetch_add(1, std::memory_order_acq_rel);
+    if (_queue.size() > kMaxQueuedFrames) {
+        // The decoder fell behind: skip ahead to the newest frames, starting at a key frame so the
+        // picture never shows a frame decoded without the ones it depends on
+        while (_queue.size() > kMaxQueuedFrames) {
+            _queue.pop_front();
+            _framesDropped.fetch_add(1, std::memory_order_acq_rel);
+        }
+        _skipToKeyFrameLocked();
     }
     // A fresh decoder must start at a key frame
-    while (!_fedSinceOpen && !_queue.empty() && !_queue.front().keyFrame) {
+    if (!_fedSinceOpen) {
+        _skipToKeyFrameLocked();
+    }
+}
+
+void DhakshaDecoderCore::_skipToKeyFrameLocked()
+{
+    while (!_queue.empty() && !_queue.front().keyFrame) {
         _queue.pop_front();
         _framesDropped.fetch_add(1, std::memory_order_acq_rel);
     }
-}
-
-void DhakshaDecoderCore::_feedLocked()
-{
-    while (_codec && !_freeInputs.empty() && !_queue.empty()) {
-        const int32_t index = _freeInputs.front();
-        _freeInputs.pop_front();
-        const Frame frame = std::move(_queue.front());
-        _queue.pop_front();
-        if (!_queueInputLocked(index, frame.data)) {
-            _framesDropped.fetch_add(1, std::memory_order_acq_rel);
-            // The lost frame may have been the key frame a fresh decoder needs
-            _trimQueueLocked();
-            continue;
-        }
-        _nextPtsUs += kPtsStepUs;
-        if (!_fedSinceOpen) {
-            _fedSinceOpen = true;
-            _firstFedMs = _clock.elapsed();
-        }
+    if (_queue.empty()) {
+        _waitKeyFrame = true;
     }
 }
 
-bool DhakshaDecoderCore::_queueInputLocked(int32_t index, const QByteArray& data)
+bool DhakshaDecoderCore::_workPendingLocked() const
+{
+    if (_quit || _codecError || !_pendingOutputs.empty()) {
+        return true;
+    }
+    if (_codec) {
+        return (_codecFormatGeneration != _formatGeneration) || (!_freeInputs.empty() && !_queue.empty());
+    }
+    return _window && _format.valid() && !_queue.empty() && (_clock.elapsed() >= _retryAtMs);
+}
+
+bool DhakshaDecoderCore::_queueInput(AMediaCodec* codec, int32_t index, const QByteArray& data, qint64 ptsUs)
 {
 #ifdef DHAKSHA_NATIVE_VIDEO
     const size_t size = static_cast<size_t>(data.size());
     size_t capacity = 0;
-    uint8_t* input = AMediaCodec_getInputBuffer(_codec, static_cast<size_t>(index), &capacity);
+    uint8_t* input = AMediaCodec_getInputBuffer(codec, static_cast<size_t>(index), &capacity);
     if (!input || (capacity < size)) {
         qCWarning(DhakshaNativeVideoLog) << "Frame of" << size << "bytes does not fit the decoder input of" << capacity;
-        (void) AMediaCodec_queueInputBuffer(_codec, static_cast<size_t>(index), 0, 0, 0, 0);
+        (void) AMediaCodec_queueInputBuffer(codec, static_cast<size_t>(index), 0, 0, 0, 0);
         return false;
     }
     memcpy(input, data.constData(), size);
-    return AMediaCodec_queueInputBuffer(_codec, static_cast<size_t>(index), 0, size, static_cast<uint64_t>(_nextPtsUs),
-                                        0) == AMEDIA_OK;
+    return AMediaCodec_queueInputBuffer(codec, static_cast<size_t>(index), 0, size, static_cast<uint64_t>(ptsUs), 0) ==
+           AMEDIA_OK;
 #else
+    Q_UNUSED(codec)
     Q_UNUSED(index)
     Q_UNUSED(data)
+    Q_UNUSED(ptsUs)
     return false;
+#endif
+}
+
+void DhakshaDecoderCore::_serviceCodec()
+{
+#ifdef DHAKSHA_NATIVE_VIDEO
+    // _lifecycleMutex keeps the codec alive while it is used here; _mutex is only held to collect the work
+    std::lock_guard<std::mutex> lifecycle(_lifecycleMutex);
+    AMediaCodec* codec = nullptr;
+    std::deque<Output> outputs;
+    std::vector<std::pair<int32_t, Frame>> inputs;
+    qint64 ptsUs = 0;
+    {
+        std::lock_guard<std::mutex> locker(_mutex);
+        codec = _codec;
+        if (!codec) {
+            return;
+        }
+        outputs.swap(_pendingOutputs);
+        while (!_freeInputs.empty() && !_queue.empty()) {
+            inputs.emplace_back(_freeInputs.front(), std::move(_queue.front()));
+            _freeInputs.pop_front();
+            _queue.pop_front();
+        }
+        ptsUs = _nextPtsUs;
+    }
+
+    // Older decoded frames first, then the newest: each is drawn the moment it is released
+    quint64 rendered = 0;
+    for (const Output& output : outputs) {
+        (void) AMediaCodec_releaseOutputBuffer(codec, static_cast<size_t>(output.index), output.render);
+        if (output.render) {
+            ++rendered;
+            _lastRenderedNs.store(output.timestampNs, std::memory_order_release);
+            _framesRendered.fetch_add(1, std::memory_order_acq_rel);
+        }
+    }
+
+    quint64 fed = 0;
+    bool lost = false;
+    for (const auto& [index, frame] : inputs) {
+        if (lost && !frame.keyFrame) {
+            // After a lost frame, later frames refer to it: give their input buffers back empty
+            (void) AMediaCodec_queueInputBuffer(codec, static_cast<size_t>(index), 0, 0, 0, 0);
+            _framesDropped.fetch_add(1, std::memory_order_acq_rel);
+            continue;
+        }
+        if (_queueInput(codec, index, frame.data, ptsUs)) {
+            lost = false;
+            ++fed;
+            ptsUs += kPtsStepUs;
+        } else {
+            lost = true;
+            _framesDropped.fetch_add(1, std::memory_order_acq_rel);
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> locker(_mutex);
+        if (codec == _codec) {
+            const qint64 now = _clock.elapsed();
+            _nextPtsUs = ptsUs;
+            if (rendered > 0) {
+                _lastOutputMs = now;
+            }
+            if ((fed > 0) && !_fedSinceOpen) {
+                _fedSinceOpen = true;
+                _firstFedMs = now;
+            }
+            if (lost) {
+                _skipToKeyFrameLocked();
+            }
+        }
+    }
+
+    if (rendered > 0) {
+        std::lock_guard<std::mutex> locker(_callbackMutex);
+        if (_frameCallback) {
+            _frameCallback();
+        }
+    }
 #endif
 }
 
 void DhakshaDecoderCore::_controlLoop()
 {
-    bool acted = false;
     while (true) {
         enum class Action
         {
-            None,
+            Service,
             Open,
             Close,
         };
-        Action action = Action::None;
+        Action action = Action::Service;
         {
             std::unique_lock<std::mutex> locker(_mutex);
-            if (!_quit && !acted) {
-                (void) _wake.wait_for(locker, kControlInterval);
-            }
+            (void) _wake.wait_for(locker, kControlInterval, [this] { return _workPendingLocked(); });
             if (_quit) {
                 return;
             }
@@ -240,14 +324,14 @@ void DhakshaDecoderCore::_controlLoop()
                 action = Action::Open;
             }
         }
-        acted = action != Action::None;
-        if (acted) {
-            QMutexLocker lifecycle(&_lifecycleMutex);
-            if (action == Action::Open) {
-                _openCodec();
-            } else {
-                _closeCodec();
-            }
+        if (action == Action::Open) {
+            std::lock_guard<std::mutex> lifecycle(_lifecycleMutex);
+            _openCodec();
+        } else if (action == Action::Close) {
+            std::lock_guard<std::mutex> lifecycle(_lifecycleMutex);
+            _closeCodec();
+        } else {
+            _serviceCodec();
         }
     }
 }
@@ -329,6 +413,7 @@ void DhakshaDecoderCore::_openCodec()
     _codecFormatGeneration = generation;
     _codecError = false;
     _freeInputs.clear();
+    _pendingOutputs.clear();
     _fedSinceOpen = false;
     _lastOutputMs = 0;
     _decoderName = name;
@@ -357,6 +442,7 @@ void DhakshaDecoderCore::_closeCodec()
     AMediaCodec* codec = _codec;
     _codec = nullptr;
     _freeInputs.clear();
+    _pendingOutputs.clear();
     _fedSinceOpen = false;
     _codecError = false;
     _trimQueueLocked();
@@ -374,41 +460,29 @@ void DhakshaDecoderCore::_closeCodec()
 
 void DhakshaDecoderCore::_onInputAvailable(AMediaCodec* codec, void* userData, int32_t index)
 {
+    // No codec call here: the worker thread fills the buffer
     auto* self = static_cast<DhakshaDecoderCore*>(userData);
-    QMutexLocker locker(&self->_mutex);
+    std::lock_guard<std::mutex> locker(self->_mutex);
     if (codec != self->_codec) {
         return;
     }
     self->_freeInputs.push_back(index);
-    self->_feedLocked();
+    self->_wake.notify_all();
 }
 
 void DhakshaDecoderCore::_onOutputAvailable(AMediaCodec* codec, void* userData, int32_t index,
                                             AMediaCodecBufferInfo* info)
 {
 #ifdef DHAKSHA_NATIVE_VIDEO
+    // No codec call here: the worker thread releases the frame to the surface straight away
     auto* self = static_cast<DhakshaDecoderCore*>(userData);
-    bool rendered = false;
-    {
-        QMutexLocker locker(&self->_mutex);
-        if (codec != self->_codec) {
-            return;
-        }
-        rendered = info && (info->size > 0);
-        // Drawn now, not at a presentation time: the newest frame is always the one shown
-        (void) AMediaCodec_releaseOutputBuffer(codec, static_cast<size_t>(index), rendered);
-        if (rendered) {
-            self->_lastOutputMs = self->_clock.elapsed();
-            self->_lastRenderedNs.store(info->presentationTimeUs * 1000, std::memory_order_release);
-            self->_framesRendered.fetch_add(1, std::memory_order_acq_rel);
-        }
+    std::lock_guard<std::mutex> locker(self->_mutex);
+    if (codec != self->_codec) {
+        return;
     }
-    if (rendered) {
-        QMutexLocker locker(&self->_callbackMutex);
-        if (self->_frameCallback) {
-            self->_frameCallback();
-        }
-    }
+    const bool render = info && (info->size > 0);
+    self->_pendingOutputs.push_back({index, render, render ? info->presentationTimeUs * 1000 : 0});
+    self->_wake.notify_all();
 #else
     Q_UNUSED(codec)
     Q_UNUSED(userData)

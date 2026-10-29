@@ -26,11 +26,12 @@ struct AMediaCodecBufferInfo;
 /// Android hardware decoder (NDK MediaCodec in asynchronous mode) drawing straight onto a GPU surface.
 ///
 /// Frames come from the network thread and never wait for the decoder: they go into a short queue that
-/// drops its oldest frame when the decoder falls behind, and the decoder's own callbacks take them as input
-/// buffers free up. Each decoded frame is released to the surface the moment it is ready. A decoder that
-/// reports an error, or gives no picture for 2 s while frames arrive, is replaced on a thread of its own;
-/// the camera connection is kept. Callbacks only hold the lock for queue work and single codec calls; codecs
-/// are stopped and deleted outside it.
+/// skips ahead to a key frame when the decoder falls behind. Every codec call is made by one worker thread:
+/// the codec's callbacks and the network thread only note what is ready and wake it. MediaCodec delivers
+/// its callbacks on the looper that also runs its own calls, so a codec call made while holding a lock a
+/// callback needs, or from inside a callback, hangs the decoder and everything that waits on it. Each
+/// decoded frame is released to the surface the moment the worker sees it. A decoder that reports an error,
+/// or gives no picture for 2 s while frames arrive, is replaced; the camera connection is kept.
 class DhakshaDecoderCore
 {
 public:
@@ -73,6 +74,13 @@ private:
         bool keyFrame = false;
     };
 
+    struct Output
+    {
+        int32_t index = 0;
+        bool render = false;
+        qint64 timestampNs = 0;
+    };
+
     static void _onInputAvailable(AMediaCodec* codec, void* userData, int32_t index);
     static void _onOutputAvailable(AMediaCodec* codec, void* userData, int32_t index, AMediaCodecBufferInfo* info);
     static void _onFormatChanged(AMediaCodec* codec, void* userData, AMediaFormat* format);
@@ -81,11 +89,14 @@ private:
     void _controlLoop();
     void _openCodec();
     void _closeCodec();
-    void _feedLocked();
-    bool _queueInputLocked(int32_t index, const QByteArray& data);
+    void _serviceCodec();
+    bool _workPendingLocked() const;
+    bool _queueInput(AMediaCodec* codec, int32_t index, const QByteArray& data, qint64 ptsUs);
     void _trimQueueLocked();
+    void _skipToKeyFrameLocked();
 
-    // Opening and closing codecs; taken before _mutex, never by the codec callbacks or the network thread
+    // Held while a codec is used, opened or closed; taken before _mutex, never by the codec callbacks or the
+    // network thread. _mutex is only held for bookkeeping, never across a codec call.
     std::mutex _lifecycleMutex;
     mutable std::mutex _mutex;
     std::condition_variable _wake;
@@ -102,6 +113,7 @@ private:
     qint64 _retryAtMs = 0;
     std::deque<Frame> _queue;
     std::deque<int32_t> _freeInputs;
+    std::deque<Output> _pendingOutputs;
     bool _waitKeyFrame = true;
     bool _fedSinceOpen = false;
     qint64 _firstFedMs = 0;
