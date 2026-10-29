@@ -119,19 +119,22 @@ Item {
             anchors.fill:   parent
             visible:        _nativeVideo
             source:         _nativeVideo ? DhakshaCameraManager.mainVideoUrl : ""
-            latencyMs:      DhakshaCameraManager.nativeLatencyMs
-            tcpOnly:        DhakshaCameraManager.nativeTcpOnly
+            tcp:            DhakshaCameraManager.nativeTcp
             cropToFill:     _isMode_FILL
             scale:          DhakshaCameraManager.camera ? DhakshaCameraManager.camera.screenZoom : 1
 
             function reportStatus() {
-                DhakshaCameraManager.nativeVideoStatus = !playing ? qsTr("Fast player: waiting for video")
-                    : qsTr("%1 x %2, %3, fast player").arg(videoSize.width).arg(videoSize.height)
+                DhakshaCameraManager.nativeVideoStatus = !connected ? qsTr("Fast player: connecting to the camera")
+                    : !playing ? qsTr("Fast player: %1 over %2, waiting for video").arg(codecName).arg(transportName)
+                    : qsTr("%1 x %2, %3 fps, %4, %5 over %6, dropped %7 frames")
+                        .arg(videoSize.width).arg(videoSize.height).arg(fps)
                         .arg(decoderName !== "" ? decoderName : qsTr("hardware decoder"))
+                        .arg(codecName).arg(transportName).arg(droppedFrames)
             }
 
             onPlayingChanged:   reportStatus()
             onVideoSizeChanged: reportStatus()
+            onStatsChanged:     reportStatus()
 
             Connections {
                 target:                         DhakshaCameraManager

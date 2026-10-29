@@ -38,6 +38,7 @@ namespace {
     // shares the radio link and the decoder with the main one, so it only plays when the pilot asks
     const char* kPipCameraKey   = "pipCameraOn";
     const char* kNativeVideoKey = "nativeVideo";
+    const char* kNativeTransportKey = "nativeTransport";
 
     QString vendorKey(int vendor)
     {
@@ -75,6 +76,8 @@ DhakshaCameraManager::DhakshaCameraManager(QObject* parent)
     }
     _pipCamera = settings.value(kPipCameraKey, false).toBool();
     _nativeVideo = settings.value(kNativeVideoKey, true).toBool();
+    _nativeTransport = settings.value(kNativeTransportKey, NativeTransportTcp).toInt() == NativeTransportUdp
+                           ? NativeTransportUdp : NativeTransportTcp;
     settings.endGroup();
     _loadVendorSettings();
 }
@@ -339,13 +342,15 @@ void DhakshaCameraManager::setNativeVideo(bool native)
     }
 }
 
-int DhakshaCameraManager::nativeLatencyMs() const
+void DhakshaCameraManager::setNativeTransport(int transport)
 {
-    // Low delay keeps no network buffer at all: each frame is decoded the moment it arrives
-    switch (_activeVideoMode) {
-    case VideoSmooth:   return 150;
-    case VideoReliable: return 100;
-    default:            return 0;
+    transport = transport == NativeTransportUdp ? NativeTransportUdp : NativeTransportTcp;
+    if (transport != _nativeTransport) {
+        _nativeTransport = transport;
+        QSettings settings;
+        settings.beginGroup(kSettingsGroup);
+        settings.setValue(kNativeTransportKey, transport);
+        emit nativeTransportChanged();
     }
 }
 
@@ -422,10 +427,7 @@ void DhakshaCameraManager::_showVideo(const QString& rtspUrl)
 
 void DhakshaCameraManager::_applyVideoMode()
 {
-    if (_videoMode != _activeVideoMode) {
-        _activeVideoMode = _videoMode;
-        emit activeVideoModeChanged();
-    }
+    // Only the Standard player uses the video mode; the fast player keeps no buffer at all
     // QGC restarts the stream itself when these settings change
     const bool tcp = _videoMode == VideoReliable;
     QSettings settings;

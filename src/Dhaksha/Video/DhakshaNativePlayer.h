@@ -1,32 +1,40 @@
 #pragma once
 
+#include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QLoggingCategory>
-#include <QtCore/QMutex>
 #include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtCore/QString>
-#include <QtCore/QTimer>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <thread>
+
+#include "DhakshaRtspClient.h"
 
 Q_DECLARE_LOGGING_CATEGORY(DhakshaNativeVideoLog)
 
 struct ANativeWindow;
 struct AMediaCodec;
-typedef struct _GstElement GstElement;
-typedef struct _GstBuffer GstBuffer;
-typedef struct _GstPad GstPad;
+struct AMediaFormat;
+struct AMediaCodecBufferInfo;
 
-/// Android hardware decoder drawing straight onto a GPU surface. Thread-safe: frames are fed from
-/// the GStreamer streaming thread, the surface is attached from the Qt render thread, and a
-/// thread of its own releases each decoded frame to the surface the moment it is ready.
+/// Android hardware decoder (NDK MediaCodec in asynchronous mode) drawing straight onto a GPU surface.
+///
+/// Frames come from the network thread and never wait for the decoder: they go into a short queue that
+/// drops its oldest frame when the decoder falls behind, and the decoder's own callbacks take them as input
+/// buffers free up. Each decoded frame is released to the surface the moment it is ready. A decoder that
+/// reports an error, or gives no picture for 2 s while frames arrive, is replaced on a thread of its own;
+/// the camera connection is kept. Callbacks only hold the lock for queue work and single codec calls; codecs
+/// are stopped and deleted outside it.
 class DhakshaDecoderCore
 {
 public:
-    DhakshaDecoderCore() = default;
+    DhakshaDecoderCore();
     ~DhakshaDecoderCore();
 
     DhakshaDecoderCore(const DhakshaDecoderCore&) = delete;
@@ -35,46 +43,86 @@ public:
     /// The surface decoded frames are drawn on; nullptr detaches it and stops the decoder
     void setOutputWindow(ANativeWindow* window);
 
+    /// A new camera session: decoding restarts at its next key frame, with a new decoder if the format changed
+    void startStream(const DhakshaVideoFormat& format);
+
+    /// Stops decoding until the next startStream()
+    void stopStream();
+
     /// One complete H.264/H.265 access unit in byte-stream format
-    void queueAccessUnit(const char* mime, int width, int height, const uint8_t* data, size_t size, bool keyFrame);
+    void queueAccessUnit(QByteArray accessUnit, bool keyFrame);
 
-    /// Drops the decoder so the next key frame starts a fresh one (new stream or stream error)
-    void reset();
-
-    /// Called from the decoder thread after each frame is drawn (cleared with nullptr)
+    /// Called from the decoder's thread after each frame is released to the surface (cleared with nullptr)
     void setFrameCallback(std::function<void()> callback);
 
     quint64 framesRendered() const { return _framesRendered.load(std::memory_order_acquire); }
+
+    /// Frames not decoded: dropped when the decoder fell behind, or while waiting for a key frame
+    quint64 framesDropped() const { return _framesDropped.load(std::memory_order_acquire); }
+
+    /// Presentation time of the newest frame released to the surface; the surface reports it per frame
+    qint64 lastRenderedTimestampNs() const { return _lastRenderedNs.load(std::memory_order_acquire); }
 
     QSize videoSize() const;
     QString decoderName() const;
 
 private:
-    bool _openLocked(const char* mime, int width, int height);
-    void _closeLocked();
-    void _outputLoop(AMediaCodec* codec);
+    struct Frame
+    {
+        QByteArray data;
+        bool keyFrame = false;
+    };
 
-    mutable QMutex _mutex;
-    // Separate from _mutex: the output thread updates the size while _closeLocked() waits for it to finish
-    mutable QMutex _sizeMutex;
+    static void _onInputAvailable(AMediaCodec* codec, void* userData, int32_t index);
+    static void _onOutputAvailable(AMediaCodec* codec, void* userData, int32_t index, AMediaCodecBufferInfo* info);
+    static void _onFormatChanged(AMediaCodec* codec, void* userData, AMediaFormat* format);
+    static void _onError(AMediaCodec* codec, void* userData, int error, int32_t actionCode, const char* detail);
+
+    void _controlLoop();
+    void _openCodec();
+    void _closeCodec();
+    void _feedLocked();
+    bool _queueInputLocked(int32_t index, const QByteArray& data);
+    void _trimQueueLocked();
+
+    // Opening and closing codecs; taken before _mutex, never by the codec callbacks or the network thread
+    std::mutex _lifecycleMutex;
+    mutable std::mutex _mutex;
+    std::condition_variable _wake;
+    std::thread _controlThread;
+    bool _quit = false;
+    QElapsedTimer _clock;
+
     ANativeWindow* _window = nullptr;
+    DhakshaVideoFormat _format;
+    quint64 _formatGeneration = 0;
+    quint64 _codecFormatGeneration = 0;
     AMediaCodec* _codec = nullptr;
-    QString _mime;
-    QString _decoderName;
+    bool _codecError = false;
+    qint64 _retryAtMs = 0;
+    std::deque<Frame> _queue;
+    std::deque<int32_t> _freeInputs;
+    bool _waitKeyFrame = true;
+    bool _fedSinceOpen = false;
+    qint64 _firstFedMs = 0;
+    qint64 _lastInputMs = -1;
+    qint64 _lastOutputMs = 0;
+    qint64 _nextPtsUs = 0;
     QSize _videoSize;
-    bool _needKeyFrame = true;
-    std::thread _outputThread;
-    std::atomic<bool> _outputRunning{false};
-    std::atomic<quint64> _framesRendered{0};
+    QString _decoderName;
 
-    QMutex _callbackMutex;
+    std::atomic<quint64> _framesRendered{0};
+    std::atomic<quint64> _framesDropped{0};
+    std::atomic<qint64> _lastRenderedNs{0};
+
+    std::mutex _callbackMutex;
     std::function<void()> _frameCallback;
 };
 
-/// Low-delay camera video for Android, played the way dedicated camera apps play it. GStreamer only
-/// receives the RTSP stream and splits it into frames; DhakshaDecoderCore decodes each frame with
-/// the hardware decoder straight onto a GPU surface that DhakshaVideoItem shows as soon as it is
-/// decoded. No frame waits for a playout time and none is copied through the CPU.
+/// Low-delay camera video for Android, played the way the camera makers' apps play it: DhakshaRtspClient
+/// receives the RTSP stream on its own thread and hands each frame to DhakshaDecoderCore, which decodes it
+/// with the hardware decoder straight onto a GPU surface that DhakshaVideoItem shows. No GStreamer, no
+/// jitter buffer, no CPU copy of the picture.
 class DhakshaNativePlayer : public QObject
 {
     Q_OBJECT
@@ -88,28 +136,18 @@ public:
 
     std::shared_ptr<DhakshaDecoderCore> decoder() const { return _decoder; }
 
-    void start(const QString& url, int latencyMs, bool tcpOnly);
+    void start(const QString& url, bool tcp);
     void stop();
 
-    bool running() const { return _pipeline != nullptr; }
+    bool running() const { return _running; }
+
+    bool connected() const { return _client.connected(); }
+
+    QString codecName() const;
+    QString transportName() const;
 
 private:
-    void _createPipeline();
-    void _destroyPipeline();
-    void _pollBus();
-    void _restartLater();
-
-    static void _onPadAdded(GstElement* source, GstPad* pad, void* userData);
-    static void _onHandoff(GstElement* sink, GstBuffer* buffer, GstPad* pad, void* userData);
-
     std::shared_ptr<DhakshaDecoderCore> _decoder = std::make_shared<DhakshaDecoderCore>();
-    GstElement* _pipeline = nullptr;
-    QString _url;
-    int _latencyMs = 0;
-    bool _tcpOnly = false;
-    bool _wanted = false;
-    QTimer _busTimer;
-    QTimer _restartTimer;
-    QElapsedTimer _sinceStart;
-    std::atomic<qint64> _lastFrameMs{0};
+    DhakshaRtspClient _client;
+    bool _running = false;
 };

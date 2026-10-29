@@ -2,10 +2,11 @@
 
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
+#include <limits>
 
 #include "DhakshaNativePlayer.h"
 
-#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+#ifdef Q_OS_ANDROID
 #define DHAKSHA_NATIVE_ITEM 1
 #include <QtCore/QJniEnvironment>
 #include <QtCore/QJniObject>
@@ -22,6 +23,10 @@
 namespace {
 
 constexpr GLenum kTextureExternalOes = 0x8D65;  // GL_TEXTURE_EXTERNAL_OES
+// Frames waiting on the surface latched in one render; the last one is drawn
+constexpr int kMaxLatchesPerRender = 16;
+// Renders that look again for a frame the decoder released but the surface has not received yet
+constexpr int kMaxLatchRetries = 8;
 
 const char* const kVertexShader = R"(
 attribute vec2 aPosition;
@@ -45,6 +50,11 @@ void main() {
 /// Draws the hardware decoder's surface: the decoder writes into an Android SurfaceTexture bound to
 /// a GL external texture, and each render latches the newest decoded frame and draws it. Runs on
 /// the Qt render thread with Qt Quick's OpenGL ES context current.
+///
+/// SurfaceTexture.updateTexImage() takes the oldest queued frame, so one call per render let frames pile
+/// up behind a slow display, and the full queue then held up the decoder. Each render now latches until
+/// the timestamp stops changing, and asks the render thread for another frame itself while the decoder
+/// has released a newer one, without waiting for the busy GUI thread.
 class DhakshaVideoNode : public QSGRenderNode
 {
 public:
@@ -56,10 +66,11 @@ public:
         _releaseSurface();
     }
 
-    void sync(const QRectF& rect, bool cropToFill)
+    void sync(const QRectF& rect, bool cropToFill, QQuickWindow* window)
     {
         _rect = rect;
         _cropToFill = cropToFill;
+        _quickWindow = window;
     }
 
     StateFlags changedStates() const override { return BlendState | DepthState; }
@@ -100,11 +111,16 @@ public:
             return;
         }
 
-        const quint64 frames = _decoder->framesRendered();
-        if (frames != _latchedFrames) {
-            _latchedFrames = frames;
-            if (!_latchFrame()) {
-                return;
+        const qint64 released = _decoder->lastRenderedTimestampNs();
+        if (released != _releasedTimestampNs) {
+            _releasedTimestampNs = released;
+            _latchRetries = 0;
+        }
+        if (_latchedTimestampNs < released) {
+            (void) _latchNewest();
+            // Released by the decoder but not on the surface yet: look again on the next frame
+            if ((_latchedTimestampNs < released) && (++_latchRetries <= kMaxLatchRetries) && _quickWindow) {
+                _quickWindow->update();
             }
         }
         if (!_hasImage) {
@@ -247,11 +263,23 @@ private:
         return true;
     }
 
-    bool _latchFrame()
+    bool _latchNewest()
     {
         QJniEnvironment env;
-        _surfaceTexture.callMethod<void>("updateTexImage");
-        if (env.checkAndClearExceptions()) {
+        bool latched = false;
+        for (int i = 0; i < kMaxLatchesPerRender; ++i) {
+            _surfaceTexture.callMethod<void>("updateTexImage");
+            if (env.checkAndClearExceptions()) {
+                break;
+            }
+            const jlong timestamp = _surfaceTexture.callMethod<jlong>("getTimestamp");
+            if (env.checkAndClearExceptions() || (timestamp == _latchedTimestampNs)) {
+                break;
+            }
+            _latchedTimestampNs = timestamp;
+            latched = true;
+        }
+        if (!latched) {
             return false;
         }
         jfloatArray matrix = env->NewFloatArray(16);
@@ -282,6 +310,7 @@ private:
         QJniEnvironment env;
         (void) env.checkAndClearExceptions();
         _hasImage = false;
+        _latchedTimestampNs = 0;
     }
 
     std::shared_ptr<DhakshaDecoderCore> _decoder;
@@ -297,7 +326,10 @@ private:
     QJniObject _surfaceTexture;
     QJniObject _surface;
     ANativeWindow* _window = nullptr;
-    quint64 _latchedFrames = 0;
+    QQuickWindow* _quickWindow = nullptr;
+    qint64 _latchedTimestampNs = 0;
+    qint64 _releasedTimestampNs = 0;
+    int _latchRetries = 0;
     bool _hasImage = false;
     GLfloat _texMatrix[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 };
@@ -317,7 +349,8 @@ DhakshaVideoItem::DhakshaVideoItem(QQuickItem* parent) : QQuickItem(parent), _pl
     _statusTimer.setInterval(1000);
     (void) connect(&_statusTimer, &QTimer::timeout, this, &DhakshaVideoItem::_updateStatus);
 
-    // Redraw as soon as the decoder has drawn a frame; at most one redraw request waits at a time
+    // Redraw as soon as the decoder has drawn a frame; at most one redraw request waits at a time. While
+    // frames keep coming the render thread also asks for the next redraw itself (DhakshaVideoNode::render)
     _player->decoder()->setFrameCallback([this]() {
         if (!_updateQueued.exchange(true)) {
             QMetaObject::invokeMethod(
@@ -351,20 +384,11 @@ void DhakshaVideoItem::setSource(const QString& source)
     }
 }
 
-void DhakshaVideoItem::setLatencyMs(int latencyMs)
+void DhakshaVideoItem::setTcp(bool tcp)
 {
-    if (latencyMs != _latencyMs) {
-        _latencyMs = latencyMs;
-        emit latencyMsChanged();
-        _scheduleRestart();
-    }
-}
-
-void DhakshaVideoItem::setTcpOnly(bool tcpOnly)
-{
-    if (tcpOnly != _tcpOnly) {
-        _tcpOnly = tcpOnly;
-        emit tcpOnlyChanged();
+    if (tcp != _tcp) {
+        _tcp = tcp;
+        emit tcpChanged();
         _scheduleRestart();
     }
 }
@@ -382,8 +406,9 @@ void DhakshaVideoItem::restart()
 {
     _restartTimer.stop();
     if (isVisible() && window() && !_source.isEmpty() && supported()) {
-        _player->start(_source, _latencyMs, _tcpOnly);
+        _player->start(_source, _tcp);
         _statusTimer.start();
+        _sinceStatus.start();
     } else {
         _player->stop();
         _statusTimer.stop();
@@ -405,7 +430,24 @@ void DhakshaVideoItem::_updateStatus()
     const std::shared_ptr<DhakshaDecoderCore> decoder = _player->decoder();
     const quint64 frames = decoder->framesRendered();
     const bool playing = frames != _lastFrames;
+    const qint64 elapsedMs = _sinceStatus.restart();
+    const int fps = (elapsedMs > 0)
+                        ? static_cast<int>(qRound64(static_cast<double>(frames - _lastFrames) * 1000.0 / elapsedMs))
+                        : 0;
     _lastFrames = frames;
+    const bool connected = _player->connected();
+    const int dropped = static_cast<int>(qMin<quint64>(decoder->framesDropped(), std::numeric_limits<int>::max()));
+    const QString codec = _player->codecName();
+    const QString transport = _player->transportName();
+    if ((connected != _connected) || (fps != _fps) || (dropped != _droppedFrames) || (codec != _codecName) ||
+        (transport != _transportName)) {
+        _connected = connected;
+        _fps = fps;
+        _droppedFrames = dropped;
+        _codecName = codec;
+        _transportName = transport;
+        emit statsChanged();
+    }
     if (playing != _playing) {
         _playing = playing;
         emit playingChanged();
@@ -438,7 +480,7 @@ QSGNode* DhakshaVideoItem::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData
         }
         node = new DhakshaVideoNode(_player->decoder());
     }
-    node->sync(QRectF(0, 0, width(), height()), _cropToFill);
+    node->sync(QRectF(0, 0, width(), height()), _cropToFill, window());
     node->markDirty(QSGNode::DirtyMaterial);
     return node;
 #else

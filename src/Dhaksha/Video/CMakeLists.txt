@@ -1,12 +1,14 @@
 # ============================================================================
 # Dhaksha fast video player
-# Android hardware decoder drawing straight onto the Fly View (see DhakshaNativePlayer.h)
+# Own RTSP client and the Android hardware decoder drawing straight onto the Fly View (see DhakshaNativePlayer.h)
 # ============================================================================
 
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         DhakshaNativePlayer.cc
         DhakshaNativePlayer.h
+        DhakshaRtspClient.cc
+        DhakshaRtspClient.h
         DhakshaVideoItem.cc
         DhakshaVideoItem.h
 )

@@ -45,6 +45,13 @@ public:
     };
     Q_ENUM(VideoMode)
 
+    /// How the fast player receives RTP from the camera
+    enum NativeTransport {
+        NativeTransportTcp = 0, ///< Interleaved on the RTSP connection: nothing lost, the camera makers' default
+        NativeTransportUdp,
+    };
+    Q_ENUM(NativeTransport)
+
     Q_PROPERTY(QStringList          vendorNames READ vendorNames                    CONSTANT)
     Q_PROPERTY(int                  vendor      READ vendor     WRITE setVendor     NOTIFY vendorChanged)
     Q_PROPERTY(QString              cameraIp    READ cameraIp   WRITE setCameraIp   NOTIFY cameraIpChanged)
@@ -64,8 +71,8 @@ public:
     Q_PROPERTY(bool nativeVideo     READ nativeVideo    WRITE setNativeVideo    NOTIFY nativeVideoChanged)     ///< Fast player chosen in the settings, saved
     Q_PROPERTY(bool nativeVideoActive READ nativeVideoActive                    NOTIFY nativeVideoChanged)     ///< The Fly View plays the main camera with the fast player
     Q_PROPERTY(QString mainVideoUrl READ mainVideoUrl                           NOTIFY mainVideoUrlChanged)    ///< Camera stream on the main screen (day or night)
-    Q_PROPERTY(int  nativeLatencyMs READ nativeLatencyMs                        NOTIFY activeVideoModeChanged) ///< Fast player network buffer for the applied video mode
-    Q_PROPERTY(bool nativeTcpOnly   READ nativeTcpOnly                          NOTIFY activeVideoModeChanged)
+    Q_PROPERTY(int  nativeTransport READ nativeTransport WRITE setNativeTransport NOTIFY nativeTransportChanged) ///< NativeTransport, saved; the fast player reconnects when it changes
+    Q_PROPERTY(bool nativeTcp       READ nativeTcp                              NOTIFY nativeTransportChanged)
     Q_PROPERTY(QString nativeVideoStatus READ nativeVideoStatus WRITE setNativeVideoStatus NOTIFY nativeVideoStatusChanged) ///< What the fast player receives, set by the Fly View
 
     static DhakshaCameraManager* instance();
@@ -91,10 +98,9 @@ public:
     void                    setNativeVideo(bool native);
     bool                    nativeVideoActive() const;
     QString                 mainVideoUrl() const { return _mainVideoUrl; }
-    int                     nativeLatencyMs() const;
-    /// The fast player always receives over TCP, as the camera makers' apps do: a lost UDP packet smears the
-    /// picture until the next key frame, which fast gimbal moves (large frames, bursts of packets) made frequent
-    bool                    nativeTcpOnly() const { return true; }
+    int                     nativeTransport() const { return _nativeTransport; }
+    void                    setNativeTransport(int transport);
+    bool                    nativeTcp() const { return _nativeTransport == NativeTransportTcp; }
     QString                 nativeVideoStatus() const { return _nativeVideoStatus; }
     void                    setNativeVideoStatus(const QString& status);
     static int              defaultVideoMode(int vendor);
@@ -145,7 +151,7 @@ signals:
     void cameraChanged  ();
     void nativeVideoChanged();
     void mainVideoUrlChanged();
-    void activeVideoModeChanged();
+    void nativeTransportChanged();
     void nativeVideoStatusChanged();
     /// apply(): the fast player reconnects to the camera
     void videoRestartRequested();
@@ -172,7 +178,7 @@ private:
     bool                    _pipBoxShown = false;
     bool                    _nativeVideo = true;
     QString                 _mainVideoUrl;
-    int                     _activeVideoMode = VideoLowDelay;
+    int                     _nativeTransport = NativeTransportTcp;
     QString                 _nativeVideoStatus;
     DhakshaGimbalCamera*    _camera     = nullptr;
 };

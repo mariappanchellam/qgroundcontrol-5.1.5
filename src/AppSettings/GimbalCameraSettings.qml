@@ -12,6 +12,7 @@ Rectangle {
 
     readonly property real _margins:    ScreenTools.defaultFontPixelHeight
     readonly property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 28
+    readonly property bool _fastPlayer: DhakshaCameraManager.nativeVideo && DhakshaCameraManager.nativeVideoSupported
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
@@ -89,13 +90,27 @@ Rectangle {
                 onActivated:            (index) => DhakshaCameraManager.nativeVideo = (index === 0)
             }
 
-            QGCLabel { text: qsTr("Video") }
+            // The fast player keeps no buffer; only how it receives the video can be chosen
+            QGCLabel {
+                text:       qsTr("Video Transport")
+                visible:    _fastPlayer
+            }
             QGCComboBox {
                 Layout.preferredWidth:  _fieldWidth * 1.6
-                model:                  _fastPlayer ? [ qsTr("Low delay (TCP, no buffer)"), qsTr("Smooth (TCP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
-                                            : [ qsTr("Low delay (UDP, 17 ms buffer)"), qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
+                visible:                _fastPlayer
+                model:                  [ qsTr("TCP (recommended, nothing lost)"), qsTr("UDP") ]
+                currentIndex:           DhakshaCameraManager.nativeTransport
+                onActivated:            (index) => DhakshaCameraManager.nativeTransport = index
+            }
 
-                readonly property bool _fastPlayer: DhakshaCameraManager.nativeVideo && DhakshaCameraManager.nativeVideoSupported
+            QGCLabel {
+                text:       qsTr("Video")
+                visible:    !_fastPlayer
+            }
+            QGCComboBox {
+                Layout.preferredWidth:  _fieldWidth * 1.6
+                visible:                !_fastPlayer
+                model:                  [ qsTr("Low delay (UDP, 17 ms buffer)"), qsTr("Smooth (UDP, 150 ms buffer)"), qsTr("Reliable (TCP, 100 ms buffer)") ]
                 currentIndex:           DhakshaCameraManager.videoMode
                 onActivated:            (index) => DhakshaCameraManager.videoMode = index
             }
