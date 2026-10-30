@@ -10,3 +10,7 @@ Rules:
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
 - A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.
+
+### QML in the graph
+
+graphify does not parse QML. `./tools/graphify_qml.py` adds the QML files and their links to C++ (QML types, `Q_PROPERTY` bindings, `Q_INVOKABLE` calls, components, modules): run it after `graphify update .`. The git hooks run both (`./tools/graphify_qml.py --install-hooks` after `graphify hook install`).
