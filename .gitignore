@@ -188,3 +188,6 @@ Qt*-linux*.tar.*
 .tool-versions
 .python-version
 !tools/.python-version
+
+# graphify knowledge graph (rebuilt locally with `graphify update .`)
+graphify-out/
