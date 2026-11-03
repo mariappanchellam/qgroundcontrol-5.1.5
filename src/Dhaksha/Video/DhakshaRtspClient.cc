@@ -452,10 +452,14 @@ void DhakshaRtpDepacketizer::push(const uint8_t* data, size_t size)
         }
         offset += 4 + (static_cast<size_t>(read16(data + offset + 2)) * 4);
     }
+    // A corrupt header can claim more CSRC or extension words than the packet holds
+    if (offset >= size) {
+        return;
+    }
     size_t end = size;
     if (padding) {
         const size_t paddingBytes = data[size - 1];
-        if (paddingBytes > (size - offset)) {
+        if (paddingBytes >= (size - offset)) {
             return;
         }
         end -= paddingBytes;
