@@ -125,7 +125,9 @@ void DhakshaCameraManager::_loadVendorSettings()
     QSettings settings;
     settings.beginGroup(kSettingsGroup);
     settings.beginGroup(vendorKey(_vendor));
+    _loadingVendorSettings = true;
     setCameraIp(settings.value(kIpKey, defaultCameraIp(_vendor)).toString());
+    _loadingVendorSettings = false;
     QString rtspUrl = settings.value(kRtspKey, defaultRtspUrl(_vendor)).toString();
     if (_vendor == VendorSkydroid && rtspUrl == QLatin1String(kOldSkydroidRtsp)) {
         rtspUrl = defaultRtspUrl(_vendor);
@@ -166,6 +168,12 @@ void DhakshaCameraManager::setCameraIp(const QString& cameraIp)
     if (trimmed != _cameraIp) {
         _cameraIp = trimmed;
         emit cameraIpChanged();
+        if (!_loadingVendorSettings && _vendor != VendorNone && !trimmed.isEmpty()) {
+            QSettings settings;
+            settings.beginGroup(kSettingsGroup);
+            settings.beginGroup(vendorKey(_vendor));
+            settings.setValue(kIpKey, trimmed);
+        }
     }
 }
 

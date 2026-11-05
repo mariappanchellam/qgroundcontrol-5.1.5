@@ -116,6 +116,7 @@ public:
 
     /// Changing the vendor loads that vendor's saved IP / RTSP URL; call apply() to use them.
     void setVendor      (int vendor);
+    /// Saved for this vendor at once, so the next start uses the last IP entered even without apply()
     void setCameraIp    (const QString& cameraIp);
     void setRtspUrl     (const QString& rtspUrl);
     void setNightRtspUrl(const QString& rtspUrl);
@@ -180,6 +181,7 @@ private:
     bool                    _pipCamera  = false;
     bool                    _pipBoxShown = false;
     bool                    _nativeVideo = true;
+    bool                    _loadingVendorSettings = false;
     QString                 _mainVideoUrl;
     int                     _nativeTransport = NativeTransportTcp;
     QString                 _nativeVideoStatus;
