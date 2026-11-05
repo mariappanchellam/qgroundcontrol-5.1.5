@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * DhakshaGroundControl: SIYI ZR10 gimbal camera on the RC's Ethernet.
+ * DhakshaGroundControl: SIYI gimbal cameras (ZR10; base of the ZT6) on the RC's Ethernet.
  *
  * Controlled directly with SIYI's own gimbal camera protocol, as the SIYI FPV
  * app does, over UDP to the camera (default 192.168.144.25:37260); nothing
@@ -29,6 +29,8 @@ class SiyiGimbalCamera : public DhakshaGimbalCamera
 
 public:
     SiyiGimbalCamera(const QString& cameraIp, const QString& rtspUrl, QObject* parent = nullptr);
+    /// For another SIYI model, e.g. "ZT6", which shares this protocol
+    SiyiGimbalCamera(const QString& model, const QString& cameraIp, const QString& rtspUrl, QObject* parent);
 
     static constexpr quint16 kControlPort = 37260;
 
@@ -57,12 +59,15 @@ private slots:
     void _resendRates       ();
     void _checkRecording    ();
 
-private:
+protected:
     void _send          (quint8 command, const QByteArray& data, const QString& description = QString());
+    /// One received frame; a model with more commands handles those and passes the rest on
+    virtual void _handleFrame(quint8 command, const QByteArray& data);
+
+private:
     void _sendRates     (bool log);
     void _sendZoom      (int direction);
     void _toggleRecording(bool start);
-    void _handleFrame   (quint8 command, const QByteArray& data);
 
     // SIYI gimbal camera commands
     static constexpr quint8 kCmdManualZoom      = 0x05;     ///< int8: 1 in, 0 stop, -1 out; reply uint16 zoom x10

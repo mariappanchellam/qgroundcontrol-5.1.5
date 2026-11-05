@@ -1,6 +1,6 @@
 # ============================================================================
 # Dhaksha Gimbal Camera
-# Skydroid (Topotek protocol) and SIYI ZR10 camera control over the RC's network
+# Skydroid (Topotek protocol) and SIYI ZR10 / ZT6 camera control over the RC's network
 # ============================================================================
 
 target_sources(${CMAKE_PROJECT_NAME}
@@ -11,6 +11,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         DhakshaGimbalCamera.h
         SiyiGimbalCamera.cc
         SiyiGimbalCamera.h
+        SiyiZt6GimbalCamera.cc
+        SiyiZt6GimbalCamera.h
         SkydroidGimbalCamera.cc
         SkydroidGimbalCamera.h
 )

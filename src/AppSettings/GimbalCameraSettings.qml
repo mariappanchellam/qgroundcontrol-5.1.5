@@ -32,8 +32,8 @@ Rectangle {
             QGCLabel { text: qsTr("Camera Vendor") }
             QGCComboBox {
                 Layout.preferredWidth:  _fieldWidth
-                // The fleet's two cameras: Skydroid (vendor 1) and SIYI ZR10 (vendor 2)
-                model:                  [ "Skydroid", "ZR10" ]
+                // The fleet's cameras: Skydroid (vendor 1), SIYI ZR10 (vendor 2) and SIYI ZT6 (vendor 3)
+                model:                  [ "Skydroid", "ZR10", "ZT6" ]
                 currentIndex:           DhakshaCameraManager.vendor - 1
                 onActivated:            (index) => DhakshaCameraManager.vendor = index + 1
             }
@@ -68,11 +68,11 @@ Rectangle {
 
             QGCLabel {
                 text:       qsTr("Night Palette")
-                visible:    DhakshaCameraManager.vendor === 1
+                visible:    DhakshaCameraManager.vendor === 1 || DhakshaCameraManager.vendor === 3
             }
             QGCComboBox {
                 Layout.preferredWidth:  _fieldWidth
-                visible:                DhakshaCameraManager.vendor === 1
+                visible:                DhakshaCameraManager.vendor === 1 || DhakshaCameraManager.vendor === 3
                 model:                  DhakshaCameraManager.thermalPaletteNames
                 currentIndex:           DhakshaCameraManager.thermalPalette
                 onActivated:            (index) => DhakshaCameraManager.thermalPalette = index

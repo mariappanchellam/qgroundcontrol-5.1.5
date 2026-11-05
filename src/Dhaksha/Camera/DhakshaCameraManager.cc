@@ -7,6 +7,7 @@
 #include "DhakshaCameraManager.h"
 #include "DhakshaNativePlayer.h"
 #include "SiyiGimbalCamera.h"
+#include "SiyiZt6GimbalCamera.h"
 #include "SkydroidGimbalCamera.h"
 
 #ifndef DHAKSHA_CAMERA_NO_QGC
@@ -34,6 +35,7 @@ namespace {
     const char* kOldSkydroidRtsp = "rtsp://192.168.144.108:554/stream=0";
     const char* kGimbalSpeedKey = "DhakshaCamera/gimbalMaxSpeed";
     const char* kThermalPaletteKey = "DhakshaCamera/thermalPalette";
+    const char* kZt6ThermalPaletteKey = "DhakshaCamera/thermalPaletteZt6";
     // Renamed from "pipCamera" so every install starts with the map in the box: a second camera stream
     // shares the radio link and the decoder with the main one, so it only plays when the pilot asks
     const char* kPipCameraKey   = "pipCameraOn";
@@ -70,9 +72,9 @@ DhakshaCameraManager::DhakshaCameraManager(QObject* parent)
     // reinstalling) starts with it; a vendor the operator applied is used as saved
     _vendor = VendorSkydroid;
     if (settings.value(kConfiguredKey, false).toBool()) {
-        // Only Skydroid and the ZR10 remain; a camera type an earlier build saved (ViewPro, ZR10 over MAVLink) becomes Skydroid
+        // Skydroid, ZR10 and ZT6; a camera type an earlier build saved (ViewPro, ZR10 over MAVLink) becomes Skydroid
         const int saved = settings.value(kVendorKey, VendorSkydroid).toInt();
-        _vendor = saved == VendorZr10 ? VendorZr10 : VendorSkydroid;
+        _vendor = (saved == VendorZr10 || saved == VendorZt6) ? saved : VendorSkydroid;
     }
     _pipCamera = settings.value(kPipCameraKey, false).toBool();
     _nativeVideo = settings.value(kNativeVideoKey, true).toBool();
@@ -84,7 +86,7 @@ DhakshaCameraManager::DhakshaCameraManager(QObject* parent)
 
 QStringList DhakshaCameraManager::vendorNames() const
 {
-    return { tr("None"), QStringLiteral("Skydroid"), QStringLiteral("ZR10") };
+    return { tr("None"), QStringLiteral("Skydroid"), QStringLiteral("ZR10"), QStringLiteral("ZT6") };
 }
 
 QString DhakshaCameraManager::defaultCameraIp(int vendor)
@@ -92,6 +94,7 @@ QString DhakshaCameraManager::defaultCameraIp(int vendor)
     switch (vendor) {
     case VendorSkydroid:    return QStringLiteral("192.168.144.108");
     case VendorZr10:        return QStringLiteral("192.168.144.25");
+    case VendorZt6:         return QStringLiteral("192.168.144.25");
     default:                return QString();
     }
 }
@@ -101,6 +104,8 @@ QString DhakshaCameraManager::defaultRtspUrl(int vendor)
     switch (vendor) {
     case VendorSkydroid:    return QStringLiteral("rtsp://192.168.144.108:554/stream=1");
     case VendorZr10:        return QStringLiteral("rtsp://192.168.144.25:8554/main.264");
+    // Main stream: the zoom camera, once SiyiZt6GimbalCamera set the stitching mode
+    case VendorZt6:         return QStringLiteral("rtsp://192.168.144.25:8554/video1");
     default:                return QString();
     }
 }
@@ -109,6 +114,8 @@ QString DhakshaCameraManager::defaultNightRtspUrl(int vendor)
 {
     switch (vendor) {
     case VendorSkydroid:    return QStringLiteral("rtsp://192.168.144.108:555/stream=2");
+    // Sub stream: the thermal camera
+    case VendorZt6:         return QStringLiteral("rtsp://192.168.144.25:8554/video2");
     default:                return QString();
     }
 }
@@ -148,6 +155,7 @@ void DhakshaCameraManager::setVendor(int vendor)
         _vendor = vendor;
         emit vendorChanged();
         emit pipAvailableChanged();
+        emit thermalPaletteChanged();
         _loadVendorSettings();
     }
 }
@@ -196,8 +204,9 @@ void DhakshaCameraManager::setSkydroidGimbalStyle(int style)
 
 int DhakshaCameraManager::defaultVideoMode(int vendor)
 {
-    // The ZR10 over the SIYI link froze with QGC's 17 ms buffer; Skydroid plays well with it
-    return vendor == VendorZr10 ? VideoSmooth : VideoLowDelay;
+    // The ZR10 over the SIYI link froze with QGC's 17 ms buffer; Skydroid plays well with it. The ZT6 uses
+    // the same SIYI link as the ZR10
+    return (vendor == VendorZr10 || vendor == VendorZt6) ? VideoSmooth : VideoLowDelay;
 }
 
 void DhakshaCameraManager::setVideoMode(int mode)
@@ -223,16 +232,24 @@ void DhakshaCameraManager::setGimbalMaxSpeed(int degreesPerSecond)
     }
 }
 
-QStringList DhakshaCameraManager::thermalPaletteNames()
+QStringList DhakshaCameraManager::thermalPaletteNames() const
 {
+    if (_vendor == VendorZt6) {
+        return SiyiZt6GimbalCamera::paletteNames();
+    }
     // In the order of the camera's palette numbers (Topotek IMG command 00..07)
     return { tr("White hot"), tr("Black hot"), tr("Ironbow"), tr("Rainbow"),
              tr("Glowbow"), tr("Autumn"), tr("Winter"), tr("Hot metal") };
 }
 
+QString DhakshaCameraManager::_thermalPaletteKey() const
+{
+    return QLatin1String(_vendor == VendorZt6 ? kZt6ThermalPaletteKey : kThermalPaletteKey);
+}
+
 int DhakshaCameraManager::thermalPalette() const
 {
-    const int palette = QSettings().value(kThermalPaletteKey, 0).toInt();
+    const int palette = QSettings().value(_thermalPaletteKey(), 0).toInt();
     return (palette >= 0 && palette < thermalPaletteNames().size()) ? palette : 0;
 }
 
@@ -241,7 +258,7 @@ void DhakshaCameraManager::setThermalPalette(int palette)
     if (palette < 0 || palette >= thermalPaletteNames().size()) {
         return;
     }
-    QSettings().setValue(kThermalPaletteKey, palette);
+    QSettings().setValue(_thermalPaletteKey(), palette);
     emit thermalPaletteChanged();
     // Sent even when unchanged, so choosing it again fixes a camera that was changed elsewhere
     if (_camera) {
@@ -380,18 +397,23 @@ void DhakshaCameraManager::_createCamera()
     switch (_vendor) {
     case VendorSkydroid:
         _camera = new SkydroidGimbalCamera(_cameraIp, _rtspUrl, this);
+        break;
+    case VendorZr10:
+        _camera = new SiyiGimbalCamera(_cameraIp, _rtspUrl, this);
+        break;
+    case VendorZt6:
+        _camera = new SiyiZt6GimbalCamera(_cameraIp, _rtspUrl, this);
+        break;
+    default:
+        break;
+    }
+    if (_camera && _camera->thermalPaletteSupported()) {
         // The saved night palette, each time the camera (re)connects, e.g. after it was powered off
         connect(_camera, &DhakshaGimbalCamera::connectedChanged, this, [this, camera = _camera]() {
             if (camera == _camera && camera->connected()) {
                 camera->setThermalPalette(thermalPalette());
             }
         });
-        break;
-    case VendorZr10:
-        _camera = new SiyiGimbalCamera(_cameraIp, _rtspUrl, this);
-        break;
-    default:
-        break;
     }
     emit cameraChanged();
 }

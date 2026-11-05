@@ -33,6 +33,7 @@ public:
         VendorNone = 0,
         VendorSkydroid,
         VendorZr10,             ///< SIYI ZR10 on the RC's Ethernet, SIYI's own protocol
+        VendorZt6,              ///< SIYI ZT6 zoom + thermal on the RC's Ethernet, SIYI's own protocol
         VendorCount
     };
     Q_ENUM(Vendor)
@@ -64,7 +65,7 @@ public:
     Q_PROPERTY(int  skydroidGimbalStyle READ skydroidGimbalStyle WRITE setSkydroidGimbalStyle NOTIFY skydroidGimbalStyleChanged) ///< 0 YPR (C13), 1 GSY/GSP (C10); used from the next apply()
     Q_PROPERTY(DhakshaGimbalCamera* camera      READ camera                         NOTIFY cameraChanged)
     Q_PROPERTY(int  gimbalMaxSpeed  READ gimbalMaxSpeed WRITE setGimbalMaxSpeed NOTIFY gimbalMaxSpeedChanged)  ///< Degrees per second at full joystick, 10..60
-    Q_PROPERTY(QStringList thermalPaletteNames READ thermalPaletteNames CONSTANT)
+    Q_PROPERTY(QStringList thermalPaletteNames READ thermalPaletteNames NOTIFY vendorChanged)   ///< The selected camera's night palettes
     Q_PROPERTY(int  thermalPalette  READ thermalPalette WRITE setThermalPalette NOTIFY thermalPaletteChanged)  ///< Night camera palette, saved; sent when chosen and when the camera connects
     Q_PROPERTY(int  videoMode       READ videoMode      WRITE setVideoMode      NOTIFY videoModeChanged)       ///< VideoMode, saved per camera; used from the next apply()
     Q_PROPERTY(bool nativeVideoSupported READ nativeVideoSupported CONSTANT)                                    ///< The fast player works on this platform (Android)
@@ -106,7 +107,7 @@ public:
     static int              defaultVideoMode(int vendor);
     int                     gimbalMaxSpeed() const;
     void                    setGimbalMaxSpeed(int degreesPerSecond);
-    static QStringList      thermalPaletteNames();
+    QStringList             thermalPaletteNames() const;
     int                     thermalPalette() const;
     void                    setThermalPalette(int palette);
     static constexpr int    kMinGimbalSpeed = 10;
@@ -160,6 +161,8 @@ private:
     explicit DhakshaCameraManager(QObject* parent = nullptr);
 
     void _loadVendorSettings    ();
+    /// Where the selected camera's night palette is saved; each camera has its own palette list
+    QString _thermalPaletteKey  () const;
     void _saveSettings          ();
     void _createCamera          ();
     void _applyNativeVideo      ();
