@@ -23,6 +23,11 @@ QGCCachedTileSet::QGCCachedTileSet(const QString &name, QObject *parent)
 QGCCachedTileSet::~QGCCachedTileSet()
 {
     qCDebug(QGCCachedTileSetLog) << this;
+
+    // Qt uses the manager when a reply finishes, so pending replies must go before it
+    QMutexLocker lock(&_repliesMutex);
+    qDeleteAll(_replies);
+    _replies.clear();
 }
 
 QString QGCCachedTileSet::downloadStatus() const
