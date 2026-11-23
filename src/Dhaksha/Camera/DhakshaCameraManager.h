@@ -65,6 +65,7 @@ public:
     Q_PROPERTY(int  skydroidGimbalStyle READ skydroidGimbalStyle WRITE setSkydroidGimbalStyle NOTIFY skydroidGimbalStyleChanged) ///< 0 YPR (C13), 1 GSY/GSP (C10); used from the next apply()
     Q_PROPERTY(DhakshaGimbalCamera* camera      READ camera                         NOTIFY cameraChanged)
     Q_PROPERTY(int  gimbalMaxSpeed  READ gimbalMaxSpeed WRITE setGimbalMaxSpeed NOTIFY gimbalMaxSpeedChanged)  ///< Degrees per second at full joystick, 10..60
+    Q_PROPERTY(bool gimbalControlsShown READ gimbalControlsShown WRITE setGimbalControlsShown NOTIFY gimbalControlsShownChanged) ///< Joystick, centre and tilt-down buttons on the Fly View, saved
     Q_PROPERTY(QStringList thermalPaletteNames READ thermalPaletteNames NOTIFY vendorChanged)   ///< The selected camera's night palettes
     Q_PROPERTY(int  thermalPalette  READ thermalPalette WRITE setThermalPalette NOTIFY thermalPaletteChanged)  ///< Night camera palette, saved; sent when chosen and when the camera connects
     Q_PROPERTY(int  videoMode       READ videoMode      WRITE setVideoMode      NOTIFY videoModeChanged)       ///< VideoMode, saved per camera; used from the next apply()
@@ -107,6 +108,8 @@ public:
     static int              defaultVideoMode(int vendor);
     int                     gimbalMaxSpeed() const;
     void                    setGimbalMaxSpeed(int degreesPerSecond);
+    bool                    gimbalControlsShown() const;
+    void                    setGimbalControlsShown(bool shown);
     QStringList             thermalPaletteNames() const;
     int                     thermalPalette() const;
     void                    setThermalPalette(int palette);
@@ -148,6 +151,7 @@ signals:
     void pipBoxShownChanged();
     void skydroidGimbalStyleChanged();
     void gimbalMaxSpeedChanged();
+    void gimbalControlsShownChanged();
     void thermalPaletteChanged();
     void videoModeChanged();
     void cameraChanged  ();

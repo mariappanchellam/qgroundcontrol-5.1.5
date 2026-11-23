@@ -34,6 +34,7 @@ namespace {
     // Day address saved by builds before the Skydroid's real one (port 554 stream=1) was known
     const char* kOldSkydroidRtsp = "rtsp://192.168.144.108:554/stream=0";
     const char* kGimbalSpeedKey = "DhakshaCamera/gimbalMaxSpeed";
+    const char* kGimbalControlsKey = "DhakshaCamera/gimbalControlsShown";
     const char* kThermalPaletteKey = "DhakshaCamera/thermalPalette";
     const char* kZt6ThermalPaletteKey = "DhakshaCamera/thermalPaletteZt6";
     // Renamed from "pipCamera" so every install starts with the map in the box: a second camera stream
@@ -237,6 +238,19 @@ void DhakshaCameraManager::setGimbalMaxSpeed(int degreesPerSecond)
     if (degreesPerSecond != gimbalMaxSpeed()) {
         QSettings().setValue(kGimbalSpeedKey, degreesPerSecond);
         emit gimbalMaxSpeedChanged();
+    }
+}
+
+bool DhakshaCameraManager::gimbalControlsShown() const
+{
+    return QSettings().value(kGimbalControlsKey, true).toBool();
+}
+
+void DhakshaCameraManager::setGimbalControlsShown(bool shown)
+{
+    if (shown != gimbalControlsShown()) {
+        QSettings().setValue(kGimbalControlsKey, shown);
+        emit gimbalControlsShownChanged();
     }
 }
 

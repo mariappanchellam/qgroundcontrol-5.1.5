@@ -4,11 +4,12 @@
  *
  * Laid out like the camera makers' own apps, for a 5.5 inch screen: round
  * icon buttons split around the video instead of one panel.
- *   left:        record and photo, with the gimbal joystick to their right
- *                (drag the knob; the further from the centre, the faster the
- *                gimbal turns, up to the speed set under settings)
- *   right:       centre, tilt down 90, zoom in / out and settings, just under
- *                the HUD
+ *   left:        zoom in / out above record and photo, with the gimbal
+ *                joystick to their right (drag the knob; the further from the
+ *                centre, the faster the gimbal turns, up to the speed set
+ *                under settings)
+ *   right:       centre, tilt down 90 and settings, just under the HUD
+ * The joystick, centre and tilt-down buttons can be hidden under settings.
  *   top centre:  connection, day / night camera (when there is a night camera)
  * A small label under the top row shows recording time and other
  * confirmations. Works with any DhakshaGimbalCamera; the vendor protocol
@@ -218,7 +219,7 @@ Item {
         }
     }
 
-    // ------------------------------------------------------------------ Left: record and photo, joystick to their right
+    // ------------------------------------------------------------------ Left: zoom, record and photo, joystick to their right
 
     Column {
         id:                     captureButtons
@@ -227,6 +228,16 @@ Item {
         anchors.verticalCenter: joystick.verticalCenter
         spacing:                _margin
 
+        IconButton {
+            icon:           "zoom_in"
+            holdAction:     function() { _camera.zoomIn() }
+            releaseAction:  function() { _camera.zoomStop() }
+        }
+        IconButton {
+            icon:           "zoom_out"
+            holdAction:     function() { _camera.zoomOut() }
+            releaseAction:  function() { _camera.zoomStop() }
+        }
         IconButton {
             icon:           "record"
             active:         _camera && _camera.recording
@@ -247,6 +258,7 @@ Item {
         anchors.leftMargin:     _margin
         anchors.verticalCenter: parent.verticalCenter
         z:                      1
+        visible:                DhakshaCameraManager.gimbalControlsShown
 
         property real   _range:     (width - knob.width) / 2
         property real   _dx:        0
@@ -336,7 +348,7 @@ Item {
         }
     }
 
-    // ------------------------------------------------------------------ Right: gimbal and lens, just under the HUD
+    // ------------------------------------------------------------------ Right: gimbal and settings, just under the HUD
 
     Grid {
         anchors.right:          parent.right
@@ -348,21 +360,13 @@ Item {
 
         IconButton {
             icon:           "center"
+            visible:        DhakshaCameraManager.gimbalControlsShown
             clickAction:    function() { _camera.gimbalCenter(); notify(qsTr("Gimbal centre")) }
         }
         IconButton {
-            icon:           "zoom_in"
-            holdAction:     function() { _camera.zoomIn() }
-            releaseAction:  function() { _camera.zoomStop() }
-        }
-        IconButton {
             icon:           "down"
+            visible:        DhakshaCameraManager.gimbalControlsShown
             clickAction:    function() { _camera.gimbalDown(); notify(qsTr("Tilt down 90°")) }
-        }
-        IconButton {
-            icon:           "zoom_out"
-            holdAction:     function() { _camera.zoomOut() }
-            releaseAction:  function() { _camera.zoomStop() }
         }
         IconButton {
             icon:           "settings"
@@ -371,7 +375,7 @@ Item {
         }
     }
 
-    // ------------------------------------------------------------------ Settings: gimbal speed and night palette
+    // ------------------------------------------------------------------ Settings: gimbal speed, night palette, gimbal controls on / off
 
     Rectangle {
         id:             speedSettings
@@ -455,6 +459,17 @@ Item {
                             DhakshaCameraManager.thermalPalette = index
                             notify(qsTr("Night palette: %1").arg(DhakshaCameraManager.thermalPaletteNames[index]))
                         }
+                    }
+                }
+                // Applied at once and saved, unlike the speed which waits for Confirm
+                QGCCheckBox {
+                    anchors.horizontalCenter:   parent.horizontalCenter
+                    text:                       qsTr("Show gimbal controls on screen")
+                    textColor:                  "white"
+                    checked:                    DhakshaCameraManager.gimbalControlsShown
+                    onClicked: {
+                        DhakshaCameraManager.gimbalControlsShown = checked
+                        notify(checked ? qsTr("Gimbal controls shown") : qsTr("Gimbal controls hidden"))
                     }
                 }
                 Row {
