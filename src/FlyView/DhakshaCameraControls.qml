@@ -35,10 +35,13 @@ Item {
     property real rightTopInset:    0   ///< bottom of the instrument panel at the top right
 
     property var    _camera:        DhakshaCameraManager.camera
-    property real   _margin:        ScreenTools.defaultFontPixelHeight / 2
-    property real   _buttonSize:    ScreenTools.defaultFontPixelHeight * 1.9
-    property real   _smallButton:   ScreenTools.defaultFontPixelHeight * 1.6
-    property real   _joystickSize:  ScreenTools.defaultFontPixelHeight * 5.5
+    // The controls grow and shrink with the screen so the left column always fits between the tool strip
+    // and the small map / video box: 1.0 on a screen 30 text lines high, limited so they stay usable
+    readonly property real _fit:    Math.max(0.65, Math.min(1.5, height / (ScreenTools.defaultFontPixelHeight * 30)))
+    property real   _margin:        ScreenTools.defaultFontPixelHeight / 2 * _fit
+    property real   _buttonSize:    ScreenTools.defaultFontPixelHeight * 1.9 * _fit
+    property real   _smallButton:   ScreenTools.defaultFontPixelHeight * 1.6 * _fit
+    property real   _joystickSize:  ScreenTools.defaultFontPixelHeight * 5.5 * _fit
     property int    _recordSeconds: 0
 
     readonly property string _iconPath: "/res/DhakshaCamera/"
