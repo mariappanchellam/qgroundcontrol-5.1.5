@@ -9,7 +9,8 @@
  *                centre, the faster the gimbal turns, up to the speed set
  *                under settings)
  *   right:       centre, tilt down 90 and settings, just under the HUD
- * The joystick, centre and tilt-down buttons can be hidden under settings.
+ * The joystick, centre and tilt-down buttons can be hidden under settings; the
+ * gimbal is then turned by dragging on the video (FlyViewVideo.qml).
  *   top centre:  connection, day / night camera (when there is a night camera)
  * A small label under the top row shows recording time and other
  * confirmations. Works with any DhakshaGimbalCamera; the vendor protocol
@@ -469,7 +470,7 @@ Item {
                     checked:                    DhakshaCameraManager.gimbalControlsShown
                     onClicked: {
                         DhakshaCameraManager.gimbalControlsShown = checked
-                        notify(checked ? qsTr("Gimbal controls shown") : qsTr("Gimbal controls hidden"))
+                        notify(checked ? qsTr("Gimbal controls shown") : qsTr("Gimbal controls hidden: drag on the video to turn the gimbal"))
                     }
                 }
                 Row {

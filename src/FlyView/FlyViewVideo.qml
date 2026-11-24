@@ -93,6 +93,51 @@ Item {
         property bool _doubleClicked: false
         readonly property real _dragThreshold: 10
 
+        // DhakshaGroundControl: with the on-screen gimbal joystick hidden, dragging on the video turns the
+        // gimbal. The press point is the centre of an invisible joystick: the further the finger moves from
+        // it, the faster the gimbal turns, and lifting the finger stops it.
+        readonly property var  _dhakshaCamera:      DhakshaCameraManager.camera
+        readonly property bool _dhakshaGesture:     _dhakshaCamera && _dhakshaCamera.controlSupported && !DhakshaCameraManager.gimbalControlsShown
+        readonly property real _dhakshaFullDrag:    Math.max(ScreenTools.defaultFontPixelHeight * 6, height * 0.3)
+        property bool _dhakshaTurning:  false
+        property int  _dhakshaYawSent:  0
+        property int  _dhakshaPitchSent: 0
+
+        preventStealing: _dhakshaGesture
+
+        function _dhakshaSpeed(distance) {
+            var fraction = Math.max(-1, Math.min(1, distance / _dhakshaFullDrag))
+            return Math.round((fraction < 0 ? -1 : 1) * fraction * fraction * 100)
+        }
+
+        function _dhakshaTurn(x, y) {
+            var limit = DhakshaCameraManager.gimbalMaxSpeed / 60
+            var yaw   = Math.round(_dhakshaSpeed(x - _pressX) * limit)
+            var pitch = Math.round(_dhakshaSpeed(_pressY - y) * limit)
+            _dhakshaTurning = true
+            gestureMark.fingerX = x
+            gestureMark.fingerY = y
+            if (yaw !== _dhakshaYawSent || pitch !== _dhakshaPitchSent) {
+                _dhakshaYawSent   = yaw
+                _dhakshaPitchSent = pitch
+                _dhakshaCamera.gimbalSpeed(yaw, pitch)
+            }
+        }
+
+        function _dhakshaStop() {
+            if (_dhakshaTurning) {
+                _dhakshaTurning   = false
+                _dhakshaYawSent   = 0
+                _dhakshaPitchSent = 0
+                if (_dhakshaCamera) {
+                    _dhakshaCamera.gimbalStop()
+                }
+            }
+        }
+
+        on_DhakshaGestureChanged:   if (!_dhakshaGesture) _dhakshaStop()
+        onCanceled:                 { _dhakshaStop(); _dragging = false }
+
         // Defer single-click handling so a double-click (fullscreen toggle) doesn't also
         // fire an unintended gimbal click-to-point/tracking command on its first click.
         Timer {
@@ -135,10 +180,14 @@ Item {
             if (_dragging) {
                 onScreenGimbalController.mouseDragPositionChanged(mouse.x, mouse.y)
                 cameraTrackingController.mouseDragPositionChanged(mouse.x, mouse.y)
+                if (_dhakshaGesture) {
+                    _dhakshaTurn(mouse.x, mouse.y)
+                }
             }
         }
 
         onReleased: (mouse) => {
+            _dhakshaStop()
             if (_dragging) {
                 onScreenGimbalController.mouseDragEnd()
                 cameraTrackingController.mouseDragEnd(mouse.x, mouse.y)
@@ -151,6 +200,38 @@ Item {
                 singleClickTimer.restart()
             }
             _dragging = false
+        }
+    }
+
+    // Where the gimbal drag started and where the finger is now
+    Item {
+        id:             gestureMark
+        anchors.fill:   parent
+        visible:        flyViewVideoMouseArea._dhakshaTurning
+
+        property real fingerX: 0
+        property real fingerY: 0
+        readonly property real _ring: ScreenTools.defaultFontPixelHeight * 2
+        readonly property real _dot:  ScreenTools.defaultFontPixelHeight * 0.9
+
+        Rectangle {
+            x:              flyViewVideoMouseArea._pressX - width / 2
+            y:              flyViewVideoMouseArea._pressY - height / 2
+            width:          gestureMark._ring
+            height:         width
+            radius:         width / 2
+            color:          "transparent"
+            border.color:   "white"
+            border.width:   2
+            opacity:        0.7
+        }
+        Rectangle {
+            x:          gestureMark.fingerX - width / 2
+            y:          gestureMark.fingerY - height / 2
+            width:      gestureMark._dot
+            height:     width
+            radius:     width / 2
+            color:      "#F26522"
         }
     }
 
